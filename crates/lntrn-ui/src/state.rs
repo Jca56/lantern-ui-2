@@ -99,6 +99,11 @@ pub struct UiState {
     /// Set by widgets that want another rebuild right after this one
     /// (e.g. a popup that just closed and needs the underlying UI to redraw).
     pub request_rebuild: bool,
+    /// When set, every [`crate::Ui::interact`] call records its rect in
+    /// [`Self::rects`] so tests (and tooling) can find widgets by id.
+    pub record_rects: bool,
+    /// Widget rects of this frame, when [`Self::record_rects`] is on.
+    pub rects: HashMap<WidgetId, Rect>,
     last_click: Option<(Instant, Vec2)>,
     mem: HashMap<WidgetId, Mem>,
 }
@@ -143,6 +148,8 @@ impl UiState {
             popup_seen: false,
             cursor_icon: CursorIcon::Default,
             request_rebuild: false,
+            record_rects: false,
+            rects: HashMap::new(),
             last_click: None,
             mem: HashMap::new(),
         }
@@ -164,6 +171,7 @@ impl UiState {
         self.cursor_icon = CursorIcon::Default;
         self.request_rebuild = false;
         self.popup_seen = false;
+        self.rects.clear();
         let start = self.pointer;
         for ev in events {
             match ev {

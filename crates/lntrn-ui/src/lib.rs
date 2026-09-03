@@ -31,6 +31,7 @@ pub mod prefs;
 pub mod screen;
 pub mod shell;
 pub mod state;
+pub mod testing;
 pub mod theme;
 pub mod titlebar;
 pub mod ui;

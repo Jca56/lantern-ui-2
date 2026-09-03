@@ -271,6 +271,9 @@ impl<'a> Ui<'a> {
     /// Hit-test `rect` for `id` against this frame's input.
     pub fn interact(&mut self, id: WidgetId, rect: Rect, sense: Sense) -> Response {
         let st = &mut *self.state;
+        if st.record_rects {
+            st.rects.insert(id, rect);
+        }
         let visible = rect.intersection(&self.clip);
         let blocked = st
             .popup
