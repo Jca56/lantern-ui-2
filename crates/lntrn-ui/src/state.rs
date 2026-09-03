@@ -10,7 +10,7 @@ use lntrn_math::{Rect, Vec2};
 
 use crate::event::{Event, Key, Modifiers, MouseButton};
 use crate::id::WidgetId;
-pub use crate::memory::{AnimMem, History, Snapshot};
+pub use crate::memory::{AnimMem, History, ScrollMem, Snapshot, TableMem, TextEdit};
 use crate::memory::{Mem, MemKind};
 
 /// Two presses closer than this (and within 6px) are a double click.
@@ -46,33 +46,6 @@ impl KeyPress {
     pub fn to_event(self) -> Event {
         Event::Key { key: self.key, pressed: true, repeat: self.repeat, mods: self.mods }
     }
-}
-
-/// Caret and selection of a text field, in byte offsets.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct TextEdit {
-    pub cursor: usize,
-    pub anchor: usize,
-    /// Horizontal scroll so the caret stays visible.
-    pub scroll: f64,
-    /// While editing a number field: the text being typed.
-    pub buffer: Option<String>,
-}
-
-impl TextEdit {
-    pub fn selection(&self) -> (usize, usize) {
-        (self.cursor.min(self.anchor), self.cursor.max(self.anchor))
-    }
-    pub fn has_selection(&self) -> bool {
-        self.cursor != self.anchor
-    }
-}
-
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct ScrollMem {
-    pub offset: f64,
-    /// Content height measured last frame.
-    pub content: f64,
 }
 
 pub struct UiState {

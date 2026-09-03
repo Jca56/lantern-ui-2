@@ -30,10 +30,11 @@ enum Editor {
 const EDITORS: [Editor; 5] = [Editor::Gallery, Editor::Preferences, Editor::Notes, Editor::Keys, Editor::Empty];
 
 /// Palette entries: (action id, label).
-const PALETTE: [(&str, &str); 8] = [
+const PALETTE: [(&str, &str); 9] = [
     ("demo.open", "Open File…"),
     ("demo.open_image", "Open Picture…"),
     ("demo.save_as", "Save As…"),
+    ("demo.rename_ask", "Rename Notes…"),
     ("demo.reset", "Reset Gallery"),
     ("demo.about", "About"),
     (actions::MAXIMIZE, "Maximize Area"),
@@ -53,6 +54,10 @@ struct Demo {
     gallery: GalleryState,
     keys: KeyConfig,
     notes: String,
+    /// The Notes editor's heading; the Rename dialog edits it.
+    notes_name: String,
+    /// What the Rename dialog's field holds while it is open.
+    rename: String,
     status: String,
     /// Mirror of the shell preference, for the Help menu's check mark.
     ffm: bool,
@@ -104,6 +109,8 @@ impl Demo {
             ffm: false,
             pending_image: None,
             keys,
+            notes_name: "Notes".to_owned(),
+            rename: String::new(),
             notes: "Right-click the gallery for a context menu. F3 opens the palette. Tab walks the widgets. Drop a file on the window to open it.".to_owned(),
             status: "Ctrl+F: File · F3: palette · Ctrl+Space: maximize · Ctrl+Q: quit".to_owned(),
         }
@@ -115,10 +122,20 @@ impl Demo {
             Ok(img) => {
                 self.status = format!("Decoded {} ({}×{})", path, img.width, img.height);
                 self.pending_image = Some((path.to_owned(), img));
-                self.gallery.tab = 4;
+                self.gallery.tab = 5;
             }
             Err(e) => cx.request(ShellRequest::Dialog(Dialog::notice("Could not open the picture", &format!("{path}\n{e}")))),
         }
+    }
+
+    /// The Rename dialog was confirmed: take the name it holds.
+    fn finish_rename(&mut self, cx: &mut HostCx) {
+        let name = self.rename.trim();
+        if !name.is_empty() {
+            self.notes_name = name.to_owned();
+        }
+        cx.toast(&format!("Renamed to {}", self.notes_name));
+        cx.rebuild();
     }
 
     /// A file from outside: pictures go to the gallery, anything else
@@ -201,6 +218,7 @@ impl Host for Demo {
                     MenuItem::new("Open Picture…", Action::new("demo.open_image")),
                     MenuItem::separator(),
                     MenuItem::new("Save As…", Action::new("demo.save_as")).enabled(!self.notes.is_empty()),
+                    MenuItem::new("Rename Notes…", Action::new("demo.rename_ask")),
                     MenuItem::separator(),
                     MenuItem::new("Reset Gallery…", Action::new("demo.reset_ask")),
                     MenuItem::separator(),
@@ -250,7 +268,7 @@ impl Host for Demo {
                 prefs::draw(ui, cx.prefs)
             }
             Editor::Notes => {
-                ui.heading("Notes");
+                ui.heading(&self.notes_name);
                 ui.label_dim(&format!("Area {} · {} · Ctrl+Enter saves", cx.area, if cx.active { "focused" } else { "not focused" }));
                 if ui.text_area("notes", &mut self.notes, None).committed {
                     cx.request(ShellRequest::PathDialog { action: Action::new("demo.saved"), save: true, suggest: std::env::var_os("HOME").map(std::path::PathBuf::from).unwrap_or_default().join("notes.txt").display().to_string() });
@@ -294,6 +312,12 @@ impl Host for Demo {
                 cx.toast(&self.status.clone());
             }
             "demo.reset_ask" => cx.request(ShellRequest::Dialog(Dialog::confirm("Reset the gallery?", "Every knob, toggle and counter goes back to how it started.", "Reset", Action::new("demo.reset")))),
+            "demo.rename_ask" => {
+                self.rename = self.notes_name.clone();
+                let dialog = Dialog::new("Rename the notes", "").button("Cancel", None).button("Rename", Some(Action::new("demo.rename"))).default_button(1).content("rename");
+                cx.request(ShellRequest::Dialog(dialog));
+            }
+            "demo.rename" => self.finish_rename(cx),
             "demo.reset" => {
                 self.gallery = GalleryState::default();
                 self.status = "Gallery reset".to_owned();
@@ -320,12 +344,25 @@ impl Host for Demo {
         true
     }
 
-    fn draw_item(&mut self, key: &str, ui: &mut Ui, _cx: &mut HostCx) -> bool {
-        if key == "stats" {
-            let g = &self.gallery;
-            ui.label(&format!("{} clicks", g.clicks));
-            ui.label(&format!("slider {:.2} · number {:.2} · count {}", g.slider, g.number, g.count));
-            ui.label(&format!("{} chars of text", g.text.chars().count()));
+    fn draw_item(&mut self, key: &str, ui: &mut Ui, cx: &mut HostCx) -> bool {
+        match key {
+            "stats" => {
+                let g = &self.gallery;
+                ui.label(&format!("{} clicks", g.clicks));
+                ui.label(&format!("slider {:.2} · number {:.2} · count {}", g.slider, g.number, g.count));
+                ui.label(&format!("{} chars of text", g.text.chars().count()));
+            }
+            "rename" => ui.labelled("Name", |ui| {
+                // The field has focus from the moment the dialog opens, and
+                // Enter in it is as good as the Rename button.
+                if ui.state.focus.is_none() {
+                    ui.state.focus = Some(ui.id("name"));
+                }
+                if ui.text_field("name", &mut self.rename).committed {
+                    cx.request(ShellRequest::DialogDefault);
+                }
+            }),
+            _ => {}
         }
         false
     }

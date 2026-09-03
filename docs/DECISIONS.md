@@ -230,3 +230,19 @@ there without pointer updates during the drag, so drop zones and area
 routing are best-effort until winit (or our own harness) does better on
 Wayland. The tests cover the whole path so it lights up unchanged when it
 does.
+
+## U015 — Tables: the caller declares the visible rows and owns the data
+**Status:** Accepted (2026-09-03)
+**Decision:** `Ui::table` draws the header (widths remembered per table,
+dragged at the grips, click to sort) and a body that scrolls both ways;
+the caller lays rows out itself from `Table::visible()`, saying per row
+whether it is selected and filling each cell with any widget through a
+`Cell` (a `Ui` positioned in the cell, plus aligned `label`). The table
+reports clicks, the sort the header asks for, and keyboard steps; the
+caller sorts and selects.
+**Why:** No data model to bind to means no borrow puzzle: the caller's
+data is touched only inside its own closure, edited in place by cell
+widgets. Selection and order stay wherever the app keeps them (a
+document, an undo stack).
+**Rejected:** A table that takes rows as strings (no widgets in cells, and
+every app formats twice). A retained model with two-way binding (D016).

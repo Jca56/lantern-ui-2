@@ -110,15 +110,15 @@ fn wraps_and_scrolls_to_the_caret() {
     h.click_on(id, f);
     h.key_with(Key::End, Modifiers::CTRL);
     h.frame(f);
-    assert!(h.state.scroll(id).offset > 0.0, "scrolled down to the caret");
+    assert!(h.state.scroll(id).offset.y > 0.0, "scrolled down to the caret");
     assert!(h.rect_of(id.with("thumb")).is_some(), "a scrollbar thumb exists");
     h.key_with(Key::Home, Modifiers::CTRL);
     h.frame(f);
-    assert_eq!(h.state.scroll(id).offset, 0.0);
+    assert_eq!(h.state.scroll(id).offset.y, 0.0);
     // A long word wraps: the text is still one string, rows just multiply.
     *text.borrow_mut() = "word ".repeat(60);
     h.frame(f);
-    assert!(h.state.scroll(id).content > 200.0, "wrapped content is taller than the box");
+    assert!(h.state.scroll(id).content.y > 200.0, "wrapped content is taller than the box");
 }
 
 #[test]

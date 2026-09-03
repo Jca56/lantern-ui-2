@@ -1,10 +1,12 @@
 //! What widgets remember between frames, keyed by widget id and kind: text
 //! carets, scroll offsets, open flags, drag origins, eased values, spare
-//! numbers, and undo history. One id can hold every kind at once.
+//! numbers, undo history and table layout. One id can hold every kind at
+//! once.
 
+use lntrn_math::Vec2;
 
 use crate::id::WidgetId;
-use crate::state::{ScrollMem, TextEdit, UiState};
+use crate::state::UiState;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum MemKind {
@@ -15,6 +17,50 @@ pub(crate) enum MemKind {
     Anim,
     Floats,
     History,
+    Table,
+}
+
+/// Caret and selection of a text field, in byte offsets.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct TextEdit {
+    pub cursor: usize,
+    pub anchor: usize,
+    /// Horizontal scroll so the caret stays visible.
+    pub scroll: f64,
+    /// While editing a number field: the text being typed.
+    pub buffer: Option<String>,
+}
+
+impl TextEdit {
+    pub fn selection(&self) -> (usize, usize) {
+        (self.cursor.min(self.anchor), self.cursor.max(self.anchor))
+    }
+    pub fn has_selection(&self) -> bool {
+        self.cursor != self.anchor
+    }
+}
+
+/// Where a scroll area is and how big its content was last frame, both in
+/// physical pixels: `x` across, `y` down.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ScrollMem {
+    pub offset: Vec2,
+    pub content: Vec2,
+}
+
+impl Default for ScrollMem {
+    fn default() -> Self {
+        Self { offset: Vec2::ZERO, content: Vec2::ZERO }
+    }
+}
+
+/// A table's column widths (logical pixels; [`crate::FILL`] for a column
+/// that takes what is left) and which column it is sorted by, ascending
+/// or not.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct TableMem {
+    pub widths: Vec<f64>,
+    pub sort: Option<(usize, bool)>,
 }
 
 /// One remembered state of an editor: the text and its caret.
@@ -86,6 +132,7 @@ pub(crate) enum Mem {
     Anim(AnimMem),
     Floats([f64; 4]),
     History(Box<History>),
+    Table(TableMem),
 }
 
 impl UiState {
@@ -154,6 +201,14 @@ impl UiState {
         }
     }
 
+    /// The column widths and sort of the table `id`.
+    pub fn table_mem(&mut self, id: WidgetId) -> &mut TableMem {
+        match self.mem.entry((id, MemKind::Table)).or_insert_with(|| Mem::Table(TableMem::default())) {
+            Mem::Table(t) => t,
+            _ => unreachable!("slot kind is fixed by its key"),
+        }
+    }
+
     /// Drop every kind of memory `id` has.
     pub fn forget(&mut self, id: WidgetId) {
         self.mem.retain(|(k, _), _| *k != id);
@@ -196,10 +251,14 @@ mod tests {
         assert!(*s.open(id));
         assert_eq!(s.text_edit(id).cursor, 3, "one id keeps every kind of memory at once");
         assert_eq!(*s.drag_start(id), 4.5);
-        s.scroll(id).offset = 9.0;
-        assert_eq!(s.scroll(id).offset, 9.0);
+        s.scroll(id).offset.y = 9.0;
+        assert_eq!(s.scroll(id).offset.y, 9.0);
+        s.table_mem(id).widths = vec![1.0, 2.0];
+        s.table_mem(id).sort = Some((1, false));
+        assert_eq!(s.table_mem(id).widths.len(), 2);
         s.forget(id);
-        assert_eq!(s.scroll(id).offset, 0.0);
+        assert_eq!(s.scroll(id).offset.y, 0.0);
         assert_eq!(*s.drag_start(id), 0.0);
+        assert_eq!(s.table_mem(id).sort, None);
     }
 }

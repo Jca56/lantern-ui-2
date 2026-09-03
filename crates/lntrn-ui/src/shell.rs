@@ -122,10 +122,24 @@ impl<H: Host> Shell<H> {
     }
 
     /// Carry out one request. Returns `true` to quit.
-    pub fn request(&mut self, host: &H, r: ShellRequest) -> bool {
+    pub fn request(&mut self, host: &mut H, r: ShellRequest) -> bool {
         let pointer = self.state.pointer;
         self.state.request_rebuild = true;
         match r {
+            ShellRequest::DialogDefault => {
+                if let Some(Popup::Dialog(d)) = self.popup.take() {
+                    self.state.focus = None;
+                    if let Some(action) = d.buttons.get(d.default).and_then(|(_, a)| a.clone()) {
+                        let mut more = Vec::new();
+                        dispatch(host, &action, &mut HostCx { pointer, requests: &mut more });
+                        for r in more {
+                            if self.request(host, r) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
             ShellRequest::Menu(name) => self.open_menu(host, &name, pointer),
             ShellRequest::MenuAt(name, at) => self.open_menu(host, &name, at),
             ShellRequest::Palette => self.popup = Some(Popup::Palette { query: String::new(), selected: 0 }),

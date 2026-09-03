@@ -40,11 +40,14 @@ them.
 - **Widgets**: labels, headings, paragraphs, buttons, icon buttons,
   toggles, tabs, sliders, drag numbers, knobs, dropdowns, menu buttons,
   selectables, text fields, a multi-line text area with undo, colour
-  picker, tree view, progress bars, collapsing sections, scroll areas,
-  columns, pictures, props-driven panels, a keymap editor.
+  picker, tree view, tables with sortable and resizable columns whose
+  cells are widgets, virtual lists (ten thousand rows cost the same as
+  ten), scroll areas that go down or both ways, progress bars, collapsing
+  sections, columns, pictures, props-driven panels, a keymap editor.
 - **Shell**: title bar with menus (rules, greyed rows, submenus, key
   hints, keyboard navigation), resizable and swappable areas, maximize,
-  command palette, file browser, modal dialogs, toasts, context menus with
+  command palette, file browser, modal dialogs (with the host's own
+  widgets inside when it wants them), toasts, context menus with
   tool strips, keyboard focus with rings and scroll-into-view, the system
   clipboard, input methods, files dropped from outside, timed redraws for
   animation, preferences and layout saved between runs.

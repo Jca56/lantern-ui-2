@@ -78,6 +78,12 @@ submenus, live `props!` panels with Apply, custom rows it draws itself, a
 tool strip, a bar) from whatever was under the pointer and requests it.
 After a tool runs, `Host::refresh_context_menu` brings it up to date.
 
+**Dialogs** — a `Dialog` is a title, a body, buttons that run actions, and
+optionally a `content` key: the shell then calls `Host::draw_item` with
+it between the body and the buttons, so a rename asks for a name and an
+export shows its settings, with ordinary widgets. The dialog sizes itself
+to what was drawn.
+
 **Capture** — a running tool (a modal operator) can claim presses and keys
 through `Host::capture`; the shell still routes motion, releases and the
 wheel to widgets and hands the tool every event through `Host::captured`.
@@ -187,3 +193,16 @@ A widget is a method on `Ui` in `lntrn-ui/src/widgets/`: allocate a rect
 draw with the theme helpers (`raised`, `recessed`, `fill_shaded`,
 `text_in_rect`, ...), and keep any cross-frame memory in `UiState` by
 `WidgetId`. Add it to the gallery so it can be poked at.
+
+Anything that scrolls goes through `scroll_core` (`widgets/scroll.rs`):
+it owns the wheel, the bars, the clip and scrolling keyboard focus into
+view, and hands the content a `ScrollView` (viewport, offset, origin) so
+big content can lay out only what shows. `virtual_list` and `table` are
+built on it; a table's rows are declared by the caller from
+`Table::visible()`, so ten thousand rows cost what the visible dozen do.
+
+Hit order matters in immediate mode: the first `interact` that contains
+the press claims it. A container that wants clicks *and* holds widgets
+(a table row) hit-tests twice: once with `Sense::NONE` before its
+children, for hover and the background, and once with `Sense::CLICK`
+after them, so a widget in a cell wins over the row.

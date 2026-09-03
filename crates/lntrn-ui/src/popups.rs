@@ -78,11 +78,17 @@ pub(crate) fn draw<H: Host>(ui: &mut Ui, popup: &mut Popup, window: Rect, palett
         }
         Popup::Dialog(d) => {
             let w = m.px(700.0).min(window.width() - m.pad * 2.0);
-            let style = ui.text_style();
-            let body_h = ui.text.measure_wrapped(&d.body, &style, (w - m.gap * 2.0 - m.pad * 2.0) as f32).height as f64;
-            let heading_h = ui.heading_style().line_height() as f64 + m.gap;
-            let h = m.gap * 2.0 + m.pad * 2.0 + heading_h + m.gap + body_h + m.gap * 2.0 + m.widget_h;
-            Rect::from_min_size((window.center() - Vec2::new(w, h) * 0.5).round(), Vec2::new(w, h))
+            let h = if d.content.is_some() && d.height > 0.0 {
+                d.height
+            } else {
+                let style = ui.text_style();
+                let body_h = if d.body.is_empty() { 0.0 } else { ui.text.measure_wrapped(&d.body, &style, (w - m.gap * 2.0 - m.pad * 2.0) as f32).height as f64 + m.gap };
+                let heading_h = ui.heading_style().line_height() as f64 + m.gap;
+                // With content, a guess until it has been measured once.
+                let content_h = if d.content.is_some() { m.widget_h * 2.0 } else { 0.0 };
+                m.gap * 2.0 + m.pad * 2.0 + heading_h + m.gap + body_h + content_h + m.gap + m.widget_h
+            };
+            Rect::from_min_size((window.center() - Vec2::new(w, h) * 0.5).round().max(window.min), Vec2::new(w, h.min(window.height())))
         }
         Popup::Menu(_) | Popup::Context(_) => unreachable!(),
     };
@@ -177,8 +183,20 @@ pub(crate) fn draw<H: Host>(ui: &mut Ui, popup: &mut Popup, window: Rect, palett
             ui.set_cursor(inner.min);
             ui.set_avail_width(inner.width());
             ui.heading(&d.title);
-            ui.paragraph(&d.body);
+            if !d.body.is_empty() {
+                ui.paragraph(&d.body);
+            }
             ui.space(m.gap);
+            if let Some(key) = &d.content {
+                // The host's widgets, before Enter is looked at, so a field
+                // among them gets it first.
+                ui.push_id("content");
+                if host.draw_item(key, ui, cx) {
+                    ui.state.request_rebuild = true;
+                }
+                ui.pop_id();
+                ui.space(m.gap);
+            }
             let enter = ui.state.take_key(|k| k.key == Key::Enter && k.mods.is_empty()).is_some();
             let style = ui.text_style();
             let widths: Vec<f64> = d.buttons.iter().map(|(l, _)| ui.measure(l, &style) + m.pad * 2.0).collect();
@@ -200,6 +218,14 @@ pub(crate) fn draw<H: Host>(ui: &mut Ui, popup: &mut Popup, window: Rect, palett
                     dispatch(host, &action, cx);
                 }
                 out.close = true;
+            }
+            if d.content.is_some() {
+                // Size to the content once it has been laid out.
+                let measured = ui.cursor().y + m.pad - rect.min.y;
+                if (measured - d.height).abs() > 0.5 {
+                    d.height = measured;
+                    ui.state.request_rebuild = true;
+                }
             }
         }
         Popup::Menu(_) | Popup::Context(_) => unreachable!(),

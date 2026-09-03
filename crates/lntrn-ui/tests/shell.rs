@@ -7,6 +7,8 @@ use lntrn_ui::{Action, AreaCx, Axis, Dialog, Host, HostCx, Key, KeyPress, Modifi
 #[derive(Default)]
 struct Tiny {
     ran: Vec<String>,
+    /// What the Rename dialog's field holds.
+    name: String,
 }
 
 impl Host for Tiny {
@@ -31,18 +33,61 @@ impl Host for Tiny {
             "ask" => cx.request(ShellRequest::Dialog(Dialog::confirm("Delete everything?", "This cannot be undone.", "Delete", Action::new("deleted")))),
             "notice" => cx.request(ShellRequest::Dialog(Dialog::notice("Hello", "Just so you know."))),
             "toast" => cx.toast("Saved"),
+            "rename" => cx.request(ShellRequest::Dialog(Dialog::new("Rename", "").button("Cancel", None).button("Rename", Some(Action::new("renamed"))).default_button(1).content("name"))),
             _ => {}
         }
+    }
+    fn draw_item(&mut self, key: &str, ui: &mut Ui, cx: &mut HostCx) -> bool {
+        if key == "name" {
+            if ui.state.focus.is_none() {
+                ui.state.focus = Some(ui.id("name"));
+            }
+            if ui.text_field("name", &mut self.name).committed {
+                cx.request(ShellRequest::DialogDefault);
+            }
+        }
+        false
     }
     fn key(&self, press: KeyPress, _: Option<u8>) -> Option<Action> {
         match press.key {
             Key::Char('d') => Some(Action::new("ask")),
             Key::Char('n') => Some(Action::new("notice")),
             Key::Char('t') => Some(Action::new("toast")),
+            Key::Char('r') => Some(Action::new("rename")),
             Key::Space if press.mods.ctrl() => Some(Action::new(actions::MAXIMIZE)),
             _ => None,
         }
     }
+}
+
+#[test]
+fn a_dialog_can_hold_the_hosts_widgets() {
+    let mut h = Harness::new(1000.0, 700.0);
+    let mut shell: Shell<Tiny> = Shell::new(0);
+    let mut host = Tiny::default();
+    h.shell_frame(&mut shell, &mut host);
+    h.key(Key::Char('r'));
+    h.shell_settle(&mut shell, &mut host, 4);
+    assert!(shell.popup_open());
+    let field = h.rect_of(WidgetId::ROOT.with("popup").with("popup").with("content").with("name")).expect("the field inside the dialog");
+    let ok = h.rect_of(WidgetId::ROOT.with("popup").with("popup").with_index(1).with("Rename")).expect("the Rename button");
+    assert!(ok.min.y >= field.max.y, "buttons below the content: {ok:?} under {field:?}");
+    h.type_text("Plans");
+    h.shell_settle(&mut shell, &mut host, 3);
+    assert_eq!(host.name, "Plans", "the field had focus from the start");
+    // Enter in the field: the host asks for the default button.
+    h.key(Key::Enter);
+    h.shell_settle(&mut shell, &mut host, 3);
+    assert!(!shell.popup_open());
+    assert_eq!(host.ran, vec!["rename", "renamed"]);
+    // Escape closes without running anything, field or no field.
+    h.key(Key::Char('r'));
+    h.shell_settle(&mut shell, &mut host, 4);
+    assert!(shell.popup_open());
+    h.key(Key::Escape);
+    h.shell_settle(&mut shell, &mut host, 3);
+    assert!(!shell.popup_open());
+    assert_eq!(host.ran, vec!["rename", "renamed", "rename"]);
 }
 
 fn press_release<H: Host>(h: &mut Harness, shell: &mut Shell<H>, host: &mut H, at: Vec2) {

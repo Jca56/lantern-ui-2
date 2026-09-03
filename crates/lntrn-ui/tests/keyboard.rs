@@ -216,7 +216,7 @@ fn tab_scrolls_the_focused_widget_into_view() {
     };
     h.frame(f);
     let list = WidgetId::ROOT.with("list");
-    assert_eq!(h.state.scroll(list).offset, 0.0);
+    assert_eq!(h.state.scroll(list).offset.y, 0.0);
     // Tab through the first ten buttons: the tenth is below the 280px
     // viewport, so the area scrolls to show it.
     for _ in 0..10 {
@@ -224,7 +224,7 @@ fn tab_scrolls_the_focused_widget_into_view() {
         h.settle(3, f);
     }
     assert_eq!(h.state.focus, Some(list.with_index(9).with("Button 9")));
-    assert!(h.state.scroll(list).offset > 0.0, "scrolled to the focused button");
+    assert!(h.state.scroll(list).offset.y > 0.0, "scrolled to the focused button");
     let r = h.rect_of(list.with_index(9).with("Button 9")).unwrap();
     assert!(r.max.y <= 300.0 && r.min.y >= 0.0, "in view: {r:?}");
     // Shift+Tab back to the top scrolls up again.
@@ -232,7 +232,7 @@ fn tab_scrolls_the_focused_widget_into_view() {
         h.key_with(Key::Tab, Modifiers::SHIFT);
         h.settle(3, f);
     }
-    assert_eq!(h.state.scroll(list).offset, 0.0);
+    assert_eq!(h.state.scroll(list).offset.y, 0.0);
 }
 
 #[test]

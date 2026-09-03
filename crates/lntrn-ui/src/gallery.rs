@@ -2,12 +2,37 @@
 
 use std::path::PathBuf;
 
-use lntrn_math::Rect;
+use lntrn_math::{Rect, Vec2};
 
-use crate::ui::Ui;
+use crate::ui::{FILL, Ui};
+use crate::widgets::{Column, RowStep};
 
 /// The gallery's tabs, in order.
-pub const TABS: [&str; 5] = ["Controls", "Knobs", "Text", "Lists", "Pictures"];
+pub const TABS: [&str; 6] = ["Controls", "Knobs", "Text", "Lists", "Tables", "Pictures"];
+
+/// The kinds the table's rows come in.
+pub const KINDS: [&str; 4] = ["Mesh", "Light", "Camera", "Empty"];
+
+/// A row of the gallery's table.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TableRow {
+    pub name: String,
+    pub kind: usize,
+    pub size: f64,
+    pub on: bool,
+}
+
+/// Five hundred rows, the same every run.
+fn sample_rows() -> Vec<TableRow> {
+    const NAMES: [&str; 10] = ["Cube", "Sphere", "Suzanne", "Torus", "Plane", "Cone", "Key", "Fill", "Rim", "Lens"];
+    (0..500)
+        .map(|i| {
+            let mut x = (i as u64 + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+            x ^= x >> 29;
+            TableRow { name: format!("{} {:03}", NAMES[i % NAMES.len()], i + 1), kind: ((x >> 8) % 4) as usize, size: ((x >> 16) % 10_000) as f64 / 10.0, on: x & 1 == 0 }
+        })
+        .collect()
+}
 
 #[derive(Clone, Debug)]
 pub struct GalleryState {
@@ -33,6 +58,10 @@ pub struct GalleryState {
     pub image_name: String,
     /// Files dropped on the Pictures tab, for the host to open.
     pub dropped: Vec<PathBuf>,
+    pub rows: Vec<TableRow>,
+    pub picked_row: Option<usize>,
+    /// The pick in the ten-thousand-row list.
+    pub big_pick: Option<usize>,
 }
 
 impl Default for GalleryState {
@@ -57,6 +86,9 @@ impl Default for GalleryState {
             image: None,
             image_name: String::new(),
             dropped: Vec::new(),
+            rows: sample_rows(),
+            picked_row: None,
+            big_pick: None,
             notes: "Several lines of text.\nClick to place the caret, drag to select, double-click a word.\nUp and Down remember the column; Enter breaks a line; Ctrl+Enter commits.\n\nWrapping happens at the box edge, so a long line like this one folds onto the next row when the area is narrow enough to need it.".to_owned(),
         }
     }
@@ -72,8 +104,95 @@ pub fn draw(ui: &mut Ui, g: &mut GalleryState) {
         1 => knobs(ui, g),
         2 => text(ui, g),
         3 => lists(ui, g),
+        4 => tables(ui, g),
         _ => pictures(ui, g),
     }
+}
+
+fn tables(ui: &mut Ui, g: &mut GalleryState) {
+    ui.label_dim("Click a header to sort, drag its edge to resize, click a row and use Up and Down. Cells are widgets: drag the sizes, flip the toggles.");
+    let cols = [Column::new("Name", 260.0).sortable(), Column::new("Kind", 180.0).sortable(), Column::new("Size", 160.0).right().sortable(), Column::fill("On")];
+    let half = (ui.remaining_height() * 0.5).round();
+    let picked = g.picked_row;
+    let n = g.rows.len();
+    let rows = &mut g.rows;
+    let resp = ui.table("objects", &cols, n, Some(half), |t| {
+        for i in t.visible() {
+            t.row(i, picked == Some(i), |c| {
+                let r = &mut rows[i];
+                match c.col {
+                    0 => c.label(&r.name),
+                    1 => c.label_dim(KINDS[r.kind]),
+                    2 => {
+                        c.drag_value("", &mut r.size, 0.1, Some((0.0, 1000.0)), 1);
+                    }
+                    _ => {
+                        c.toggle("", &mut r.on);
+                    }
+                }
+            });
+        }
+    });
+    if resp.sort_changed && let Some((col, asc)) = resp.sort {
+        g.rows.sort_by(|a, b| {
+            let o = match col {
+                0 => a.name.cmp(&b.name),
+                1 => a.kind.cmp(&b.kind),
+                _ => a.size.total_cmp(&b.size),
+            };
+            if asc { o } else { o.reverse() }
+        });
+        g.picked_row = None;
+    }
+    if let Some(i) = resp.clicked {
+        g.picked_row = Some(i);
+    }
+    let last = n.saturating_sub(1) as i64;
+    match resp.step {
+        RowStep::By(d) => g.picked_row = Some((picked.unwrap_or(0) as i64 + d as i64).clamp(0, last) as usize),
+        RowStep::First => g.picked_row = Some(0),
+        RowStep::Last => g.picked_row = Some(last as usize),
+        RowStep::None => {}
+    }
+    ui.space(ui.m.gap);
+    ui.columns(&[FILL, FILL], |ui, col| {
+        if col == 0 {
+            ui.heading("Ten thousand rows");
+            let row_h = ui.m.widget_h + ui.m.gap;
+            let pick = g.big_pick;
+            let mut clicked = None;
+            ui.virtual_list("big", 10_000, row_h, None, |ui, i| {
+                if ui.selectable(&format!("Row {}", i + 1), pick == Some(i)).clicked {
+                    clicked = Some(i);
+                }
+            });
+            if clicked.is_some() {
+                g.big_pick = clicked;
+            }
+        } else {
+            ui.heading("Both ways");
+            let cell = ui.m.px(120.0);
+            let (nx, ny) = (30usize, 30usize);
+            ui.scroll_area_2d("grid", None, nx as f64 * cell, |ui, view| {
+                // Only the cells in view are drawn.
+                let x0 = ((view.offset.x / cell).floor().max(0.0) as usize).min(nx);
+                let y0 = ((view.offset.y / cell).floor().max(0.0) as usize).min(ny);
+                let x1 = (((view.offset.x + view.viewport.width()) / cell).ceil() as usize).min(nx);
+                let y1 = (((view.offset.y + view.viewport.height()) / cell).ceil() as usize).min(ny);
+                let style = ui.text_style();
+                for y in y0..y1 {
+                    for x in x0..x1 {
+                        let r = Rect::from_min_size(view.origin + Vec2::new(x as f64 * cell, y as f64 * cell), Vec2::splat(cell)).shrink(ui.m.gap * 0.5);
+                        let tint = if (x + y) % 2 == 0 { ui.theme.widget } else { ui.theme.field };
+                        ui.fill(r, tint);
+                        ui.text_centered(&format!("{},{}", x + 1, y + 1), &style, r, ui.theme.text_dim);
+                    }
+                }
+                // The content is the whole grid, whatever is in view.
+                ui.alloc(Vec2::new(FILL, ny as f64 * cell));
+            });
+        }
+    });
 }
 
 fn pictures(ui: &mut Ui, g: &mut GalleryState) {
@@ -92,14 +211,14 @@ fn pictures(ui: &mut Ui, g: &mut GalleryState) {
             Some(img) => {
                 ui.label_dim(&format!("{} · {}×{}", g.image_name, img.width, img.height));
                 ui.label("Fit inside a box, aspect kept, corners rounded:");
-                ui.image_fit(img, lntrn_math::Vec2::new(crate::ui::FILL, 320.0));
+                ui.image_fit(img, Vec2::new(FILL, 320.0));
                 ui.label("At its own size, or as wide as the panel:");
                 ui.row(|ui| {
-                    ui.image(img, lntrn_math::Vec2::new(120.0, 120.0 / img.aspect()));
-                    ui.image(img, lntrn_math::Vec2::new(60.0, 60.0 / img.aspect()));
-                    ui.image(img, lntrn_math::Vec2::new(30.0, 30.0 / img.aspect()));
+                    ui.image(img, Vec2::new(120.0, 120.0 / img.aspect()));
+                    ui.image(img, Vec2::new(60.0, 60.0 / img.aspect()));
+                    ui.image(img, Vec2::new(30.0, 30.0 / img.aspect()));
                 });
-                ui.image(img, lntrn_math::Vec2::new(crate::ui::FILL, 0.0));
+                ui.image(img, Vec2::new(FILL, 0.0));
             }
             None => {
                 ui.paragraph("No picture yet. The host uploads one with Images::add and hands the gallery its handle; the demo makes one and can open a PNG or JPEG from the File menu, or one dropped on this tab.");
@@ -124,7 +243,7 @@ fn knobs(ui: &mut Ui, g: &mut GalleryState) {
         ui.progress("Scanning fonts", -1.0);
         ui.separator();
         ui.heading("Columns");
-        ui.columns(&[crate::ui::FILL, crate::ui::FILL, crate::ui::FILL], |ui, i| {
+        ui.columns(&[FILL, FILL, FILL], |ui, i| {
             ui.label_dim(["Left", "Middle", "Right"][i]);
             ui.button_wide(["Alpha", "Beta", "Gamma"][i]);
             if i == 1 {
@@ -220,14 +339,14 @@ fn text(ui: &mut Ui, g: &mut GalleryState) {
         ("Italic", body.clone().italic()),
         ("Mono", body.clone().mono()),
     ] {
-        let r = ui.alloc(lntrn_math::Vec2::new(crate::ui::FILL, ui.m.widget_h));
+        let r = ui.alloc(Vec2::new(FILL, ui.m.widget_h));
         ui.text_in_rect(&format!("{name}: The quick brown fox jumps over the lazy dog"), &style, r, ui.theme.text);
         let _ = w;
     }
 }
 
 fn lists(ui: &mut Ui, g: &mut GalleryState) {
-    ui.columns(&[crate::ui::FILL, crate::ui::FILL], |ui, col| {
+    ui.columns(&[FILL, FILL], |ui, col| {
         if col == 0 {
             ui.heading("Tree");
             let h = ui.remaining_height();

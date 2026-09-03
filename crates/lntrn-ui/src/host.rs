@@ -61,9 +61,9 @@ pub mod actions {
     pub const QUIT: &str = "shell.quit";
 }
 
-/// A modal question: a title, a body, and buttons that run actions or
-/// just close. Enter presses the default button; Escape closes; a press
-/// outside is swallowed.
+/// A modal question: a title, a body, widgets of the host's if it wants
+/// them, and buttons that run actions or just close. Enter presses the
+/// default button; Escape closes; a press outside is swallowed.
 #[derive(Clone, Debug)]
 pub struct Dialog {
     pub title: String,
@@ -73,22 +73,35 @@ pub struct Dialog {
     pub buttons: Vec<(String, Option<Action>)>,
     /// The button Enter presses.
     pub default: usize,
+    /// Widgets between the body and the buttons: the host draws them in
+    /// [`Host::draw_item`] under this key (a name field for a rename, the
+    /// settings of an export).
+    pub content: Option<String>,
+    /// Height measured last frame, when there is content.
+    pub height: f64,
 }
 
 impl Dialog {
     /// A notice with one OK button.
     pub fn notice(title: &str, body: &str) -> Self {
-        Self { title: title.to_owned(), body: body.to_owned(), buttons: vec![("OK".to_owned(), None)], default: 0 }
+        Self { buttons: vec![("OK".to_owned(), None)], ..Self::new(title, body) }
     }
 
     /// Cancel on the left, `ok` on the right running `action`; Enter confirms.
     pub fn confirm(title: &str, body: &str, ok: &str, action: Action) -> Self {
-        Self { title: title.to_owned(), body: body.to_owned(), buttons: vec![("Cancel".to_owned(), None), (ok.to_owned(), Some(action))], default: 1 }
+        Self { buttons: vec![("Cancel".to_owned(), None), (ok.to_owned(), Some(action))], default: 1, ..Self::new(title, body) }
     }
 
     /// Start with no buttons and add them with [`Dialog::button`].
     pub fn new(title: &str, body: &str) -> Self {
-        Self { title: title.to_owned(), body: body.to_owned(), buttons: Vec::new(), default: 0 }
+        Self { title: title.to_owned(), body: body.to_owned(), buttons: Vec::new(), default: 0, content: None, height: 0.0 }
+    }
+
+    /// Widgets of the host's between the body and the buttons, drawn by
+    /// [`Host::draw_item`] under `key`.
+    pub fn content(mut self, key: &str) -> Self {
+        self.content = Some(key.to_owned());
+        self
     }
 
     pub fn button(mut self, label: &str, action: Option<Action>) -> Self {
@@ -196,6 +209,10 @@ pub enum ShellRequest {
     ContextMenu(Box<ContextMenu>),
     /// Ask a modal question.
     Dialog(Dialog),
+    /// Press the open dialog's default button: what a host asks for when
+    /// a text field inside the dialog commits, so Enter confirms there
+    /// too.
+    DialogDefault,
     /// Show a short message in the corner for a few seconds.
     Toast(String),
     /// Toggle one area (the focused one when `None`) taking the whole window.

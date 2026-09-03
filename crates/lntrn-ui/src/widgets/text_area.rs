@@ -53,7 +53,7 @@ impl Ui<'_> {
         let mut rows = Vec::new();
         self.text.line_ranges(value, &style, width as f32, &mut rows);
         let mut out = TextResponse { focused: r.focused, ..TextResponse::default() };
-        let mut scroll = self.state.scroll(id).offset;
+        let mut scroll = self.state.scroll(id).offset.y;
 
         // Wheel over the area scrolls it.
         let popup_blocks = self.state.popup.is_some_and(|(p, layer)| layer > self.layer() && p.contains(self.state.pointer));
@@ -322,8 +322,8 @@ impl Ui<'_> {
             self.draw.rounded_rect_gradient(thumb.shrink(self.m.border), bar_w * 0.5, self.theme.top(base), self.theme.bottom(base));
         }
         let mem = self.state.scroll(id);
-        mem.offset = scroll;
-        mem.content = content_h;
+        mem.offset.y = scroll;
+        mem.content.y = content_h;
         self.focus_ring(id, rect);
         out
     }
