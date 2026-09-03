@@ -18,6 +18,8 @@ pub struct GalleryState {
     pub cutoff: f64,
     pub resonance: f64,
     pub progress: f64,
+    pub color: lntrn_math::Color,
+    pub tree_pick: usize,
 }
 
 impl Default for GalleryState {
@@ -37,6 +39,8 @@ impl Default for GalleryState {
             cutoff: 800.0,
             resonance: 0.2,
             progress: 0.4,
+            color: lntrn_math::Color::hex(0xFFB733),
+            tree_pick: 0,
         }
     }
 }
@@ -122,6 +126,14 @@ fn controls(ui: &mut Ui, g: &mut GalleryState) {
             });
         });
         ui.separator();
+        ui.heading("Colour");
+        ui.labelled("Accent", |ui| {
+            ui.row(|ui| {
+                ui.color_picker("accent", &mut g.color);
+                ui.label_dim(&g.color.to_hex_string());
+            });
+        });
+        ui.separator();
         ui.heading("Choice");
         ui.labelled("Shading", |ui| {
             ui.dropdown("shading", &mut g.choice, &CHOICES);
@@ -162,14 +174,55 @@ fn text(ui: &mut Ui, g: &mut GalleryState) {
 }
 
 fn lists(ui: &mut Ui, g: &mut GalleryState) {
-    ui.heading("Selectable list in a scroll area");
-    ui.scroll_area("list", None, |ui| {
-        for i in 0..40 {
-            ui.push_index(i);
-            if ui.selectable(&format!("Object {:02}", i + 1), g.selected == i).clicked {
-                g.selected = i;
-            }
-            ui.pop_id();
+    ui.columns(&[crate::ui::FILL, crate::ui::FILL], |ui, col| {
+        if col == 0 {
+            ui.heading("Tree");
+            let h = ui.remaining_height();
+            ui.scroll_area("tree", Some(h), |ui| {
+                let mut n = 0;
+                let mut row = |ui: &mut Ui, label: &str, pick: &mut usize| {
+                    n += 1;
+                    if ui.tree_leaf(label, *pick == n).clicked {
+                        *pick = n;
+                    }
+                };
+                if ui.tree_node("Scene", g.tree_pick == 100, |ui| {
+                    if ui.tree_node("Lights", g.tree_pick == 101, |ui| {
+                        row(ui, "Key", &mut g.tree_pick);
+                        row(ui, "Fill", &mut g.tree_pick);
+                        row(ui, "Rim", &mut g.tree_pick);
+                    }).clicked {
+                        g.tree_pick = 101;
+                    }
+                    if ui.tree_node("Meshes", g.tree_pick == 102, |ui| {
+                        row(ui, "Cube", &mut g.tree_pick);
+                        row(ui, "Sphere", &mut g.tree_pick);
+                        if ui.tree_node("Chair", g.tree_pick == 103, |ui| {
+                            row(ui, "Seat", &mut g.tree_pick);
+                            row(ui, "Legs", &mut g.tree_pick);
+                        }).clicked {
+                            g.tree_pick = 103;
+                        }
+                    }).clicked {
+                        g.tree_pick = 102;
+                    }
+                    row(ui, "Camera", &mut g.tree_pick);
+                }).clicked {
+                    g.tree_pick = 100;
+                }
+            });
+        } else {
+            ui.heading("Selectable list");
+            let h = ui.remaining_height();
+            ui.scroll_area("list", Some(h), |ui| {
+                for i in 0..40 {
+                    ui.push_index(i);
+                    if ui.selectable(&format!("Object {:02}", i + 1), g.selected == i).clicked {
+                        g.selected = i;
+                    }
+                    ui.pop_id();
+                }
+            });
         }
     });
 }

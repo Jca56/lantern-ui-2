@@ -1,7 +1,7 @@
 //! Property panels generated from `lntrn-props` metadata: one widget per
 //! field, nested structs as collapsible sections, lists as editable rows.
 
-use lntrn_math::{Color, Rect, Vec2, rad_to_deg, deg_to_rad};
+use lntrn_math::{Rect, Vec2, rad_to_deg, deg_to_rad};
 use lntrn_props::{FieldInfo, Kind, Reflect, ReflectList, Subtype, Value};
 
 use crate::state::CursorIcon;
@@ -210,19 +210,13 @@ impl Ui<'_> {
                 self.vector_row(&mut a, &["X", "Y", "Z", "W"]).then(|| Value::Vec4(lntrn_math::Vec4::new(a[0], a[1], a[2], a[3])))
             }
             Value::Color(c) => {
-                let mut a = [c.r, c.g, c.b, c.a];
+                let mut v = *c;
                 let mut changed = false;
                 self.row(|ui| {
-                    let sw = ui.alloc(Vec2::new(ui.m.widget_h, ui.m.widget_h));
-                    ui.fill(sw, *c);
-                    ui.outline(sw, ui.m.border, ui.theme.border_dark);
-                    for (k, name) in ["R", "G", "B", "A"].iter().enumerate() {
-                        ui.push_index(k);
-                        changed |= ui.drag_value(name, &mut a[k], 0.005, Some((0.0, 1.0)), 2);
-                        ui.pop_id();
-                    }
+                    changed = ui.color_picker("color", &mut v);
+                    ui.label_dim(&v.to_hex_string());
                 });
-                changed.then(|| Value::Color(Color::rgba(a[0], a[1], a[2], a[3])))
+                changed.then_some(Value::Color(v))
             }
             Value::Id(id) => {
                 self.label_dim(&format!("{id}"));

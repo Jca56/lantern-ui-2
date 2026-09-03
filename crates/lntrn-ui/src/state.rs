@@ -137,6 +137,7 @@ enum MemKind {
     Open,
     DragStart,
     Anim,
+    Floats,
 }
 
 /// An eased value on its way to a target (see [`crate::Ui::animate`]).
@@ -153,6 +154,7 @@ enum Mem {
     Open(bool),
     DragStart(f64),
     Anim(AnimMem),
+    Floats([f64; 4]),
 }
 
 impl Default for UiState {
@@ -377,6 +379,15 @@ impl UiState {
         let now = self.now;
         match self.mem.entry((id, MemKind::Anim)).or_insert(Mem::Anim(AnimMem { value: init, time: now })) {
             Mem::Anim(a) => a,
+            _ => unreachable!("slot kind is fixed by its key"),
+        }
+    }
+
+    /// Four numbers a widget keeps between frames (a colour picker's hue
+    /// and saturation, say); a fresh slot is `init`.
+    pub fn floats(&mut self, id: WidgetId, init: [f64; 4]) -> &mut [f64; 4] {
+        match self.mem.entry((id, MemKind::Floats)).or_insert(Mem::Floats(init)) {
+            Mem::Floats(f) => f,
             _ => unreachable!("slot kind is fixed by its key"),
         }
     }

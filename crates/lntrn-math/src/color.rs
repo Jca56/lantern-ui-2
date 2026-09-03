@@ -125,6 +125,69 @@ impl Color {
         [self.r as f32, self.g as f32, self.b as f32, self.a as f32]
     }
 
+    /// From hue (`0..1` around the wheel, red at 0), saturation and value,
+    /// opaque.
+    pub fn from_hsv(h: f64, s: f64, v: f64) -> Color {
+        let h6 = h.rem_euclid(1.0) * 6.0;
+        let i = h6.floor();
+        let f = h6 - i;
+        let (s, v) = (s.clamp(0.0, 1.0), v.clamp(0.0, 1.0));
+        let p = v * (1.0 - s);
+        let q = v * (1.0 - s * f);
+        let t = v * (1.0 - s * (1.0 - f));
+        let (r, g, b) = match i as i32 % 6 {
+            0 => (v, t, p),
+            1 => (q, v, p),
+            2 => (p, v, t),
+            3 => (p, q, v),
+            4 => (t, p, v),
+            _ => (v, p, q),
+        };
+        Color::rgb(r, g, b)
+    }
+
+    /// Hue (`0..1`), saturation and value. Hue is 0 for greys.
+    pub fn to_hsv(self) -> [f64; 3] {
+        let max = self.r.max(self.g).max(self.b);
+        let min = self.r.min(self.g).min(self.b);
+        let d = max - min;
+        let s = if max > 0.0 { d / max } else { 0.0 };
+        let h = if d <= 0.0 {
+            0.0
+        } else if max == self.r {
+            ((self.g - self.b) / d).rem_euclid(6.0)
+        } else if max == self.g {
+            (self.b - self.r) / d + 2.0
+        } else {
+            (self.r - self.g) / d + 4.0
+        } / 6.0;
+        [h, s, max]
+    }
+
+    /// `#RRGGBB`, or `#RRGGBBAA` when not opaque.
+    pub fn to_hex_string(self) -> String {
+        let [r, g, b, a] = self.to_u8();
+        if a == 255 { format!("#{r:02X}{g:02X}{b:02X}") } else { format!("#{r:02X}{g:02X}{b:02X}{a:02X}") }
+    }
+
+    /// Parse `#RGB`, `#RRGGBB` or `#RRGGBBAA` (the `#` is optional).
+    pub fn parse_hex(s: &str) -> Option<Color> {
+        let s = s.trim().trim_start_matches('#');
+        if !s.chars().all(|c| c.is_ascii_hexdigit()) {
+            return None;
+        }
+        let byte = |i: usize| u8::from_str_radix(&s[i..i + 2], 16).ok();
+        match s.len() {
+            3 => {
+                let n = |i: usize| u8::from_str_radix(&s[i..i + 1], 16).ok().map(|v| v * 17);
+                Some(Color::from_u8(n(0)?, n(1)?, n(2)?, 255))
+            }
+            6 => Some(Color::from_u8(byte(0)?, byte(2)?, byte(4)?, 255)),
+            8 => Some(Color::from_u8(byte(0)?, byte(2)?, byte(4)?, byte(6)?)),
+            _ => None,
+        }
+    }
+
     pub fn approx_eq(self, o: Color, eps: f64) -> bool {
         (self.r - o.r).abs() <= eps
             && (self.g - o.g).abs() <= eps
@@ -136,6 +199,27 @@ impl Color {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hsv_and_hex_round_trip() {
+        for (name, c) in [("red", Color::RED), ("teal", Color::hex(0x1E9A8A)), ("grey", Color::rgb(0.5, 0.5, 0.5)), ("amber", Color::hex(0xFFB733)), ("navy", Color::hex(0x0A1F5C))] {
+            let [h, s, v] = c.to_hsv();
+            let back = Color::from_hsv(h, s, v);
+            assert!(back.approx_eq(c, 1e-9), "{name}: {c:?} -> {h} {s} {v} -> {back:?}");
+        }
+        assert_eq!(Color::RED.to_hsv(), [0.0, 1.0, 1.0]);
+        assert_eq!(Color::GREEN.to_hsv()[0], 1.0 / 3.0);
+        assert_eq!(Color::rgb(0.3, 0.3, 0.3).to_hsv()[1], 0.0, "grey has no saturation");
+        assert!(Color::from_hsv(1.25, 1.0, 1.0).approx_eq(Color::from_hsv(0.25, 1.0, 1.0), 1e-12), "hue wraps");
+        assert_eq!(Color::hex(0xFFB733).to_hex_string(), "#FFB733");
+        assert_eq!(Color::hexa(0xFFB73380).to_hex_string(), "#FFB73380");
+        assert_eq!(Color::parse_hex("#ffb733"), Some(Color::hex(0xFFB733)));
+        assert_eq!(Color::parse_hex("FFB733"), Some(Color::hex(0xFFB733)));
+        assert_eq!(Color::parse_hex("#f00"), Some(Color::RED));
+        assert_eq!(Color::parse_hex("#FFB73380"), Some(Color::hexa(0xFFB73380)));
+        assert_eq!(Color::parse_hex("#ggg"), None);
+        assert_eq!(Color::parse_hex("#12345"), None);
+    }
 
     #[test]
     fn hex_roundtrip() {

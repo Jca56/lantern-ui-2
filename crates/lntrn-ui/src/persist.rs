@@ -77,9 +77,7 @@ mod tests {
     fn prefs_round_trip_and_reject_garbage() {
         let dir = scratch("prefs");
         let path = dir.join("prefs.bin");
-        let mut p = Prefs::default();
-        p.ui_scale = 1.4;
-        p.focus_follows_mouse = true;
+        let mut p = Prefs { ui_scale: 1.4, focus_follows_mouse: true, ..Prefs::default() };
         p.theme.accent = Color::hex(0x00FF88);
         p.theme.text_size = 30.0;
         save(&path, &p).unwrap();
@@ -92,8 +90,7 @@ mod tests {
         assert!(!dir.join("prefs.tmp").exists(), "the temp file was renamed away");
 
         std::fs::write(&path, b"not ours at all").unwrap();
-        let mut untouched = Prefs::default();
-        untouched.ui_scale = 2.0;
+        let mut untouched = Prefs { ui_scale: 2.0, ..Prefs::default() };
         assert!(!load(&path, &mut untouched));
         assert_eq!(untouched.ui_scale, 2.0);
         assert!(!load(&dir.join("missing.bin"), &mut untouched));
