@@ -226,11 +226,12 @@ pointer takes a drop; what no zone takes reaches `Host::dropped` with the
 area under the pointer. A composition shows inline at the focused
 widget's caret; the shell reports the caret rect so the harness can place
 the input method's window.
-**Known limit:** winit 0.30 delivers file drops on X11 only, and even
-there without pointer updates during the drag, so drop zones and area
-routing are best-effort until winit (or our own harness) does better on
-Wayland. The tests cover the whole path so it lights up unchanged when it
-does.
+**Wayland:** winit 0.30 delivers file drops on X11 only, so on Wayland
+the harness takes them itself, over the data device it owns for the
+clipboard (U018): it binds at version 3, accepts `text/uri-list` on
+enter, negotiates a copy, reads the list while the drag still hovers,
+and reports every motion as a pointer position, so drop zones and area
+routing are exact there. On X11 winit's events stand, pointerless.
 
 ## U015 — Tables: the caller declares the visible rows and owns the data
 **Status:** Accepted (2026-09-03)

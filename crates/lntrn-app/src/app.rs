@@ -328,9 +328,15 @@ impl<H: AppHost> ApplicationHandler for App<H> {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        // The clipboard's own queue: another app pasting what we copied.
+        // The clipboard's own queue: another app pasting what we copied, or
+        // files being dragged in.
         if let Some(w) = &mut self.win {
             w.clipboard.poll();
+            let drag = w.clipboard.drag_events(self.scale);
+            if !drag.is_empty() {
+                self.events.extend(drag);
+                self.dirty = true;
+            }
         }
         if self.dirty && let Some(w) = &self.win {
             self.dirty = false;

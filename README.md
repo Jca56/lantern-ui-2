@@ -16,6 +16,7 @@ lntrn-props    reflection: describe a struct once             pure std
 lntrn-core     handles, arenas, chunked vecs, jobs, undo, log pure std
 lntrn-math     f64 vectors, matrices, quaternions, rects      pure std
 lntrn-demo     the widget gallery and a reference host
+lntrn-template the smallest complete app, to copy
 ```
 
 Nothing depends upward. Everything below `lntrn-render` builds and tests
@@ -52,7 +53,7 @@ them.
   command palette, file browser, modal dialogs (with the host's own
   widgets inside when it wants them), toasts, context menus with
   tool strips, keyboard focus with rings and scroll-into-view, the system
-  clipboard, input methods, files dropped from outside, timed redraws for
+  clipboard, input methods, files dragged in from other apps, timed redraws for
   animation (or none, with the reduce-motion preference), a debug overlay
   of what a rebuild costs, preferences and layout saved between runs.
 - **Harnesses**: a winit window (`lntrn_app::run`) and an embedded view
@@ -73,8 +74,13 @@ lntrn-app = { path = "../lantern-ui-2/crates/lntrn-app" }
 ```
 
 Then implement `lntrn_ui::Host` (two required methods: `draw_body` and
-`run`), build a `Shell`, and call `lntrn_app::run`. `crates/lntrn-demo` is
-the smallest complete example; `docs/ARCHITECTURE.md` explains the pieces.
+`run`), build a `Shell`, and call `lntrn_app::run`.
+
+The quickest start is to copy `crates/lntrn-template`: one editor, a
+menu, a key binding, the palette, and the shell's preferences editor in
+about a hundred commented lines (`cargo run -p lntrn-template`).
+`crates/lntrn-demo` is the full tour; `docs/ARCHITECTURE.md` explains
+the pieces.
 
 ## House rules
 

@@ -3,10 +3,13 @@
 //! else works the same. The harness pulls it in right before a rebuild
 //! that carries a paste key ([`lntrn_ui::Event::is_paste`]) and pushes
 //! ours out after a rebuild in which a widget copied
-//! ([`lntrn_ui::UiState::take_clipboard_dirty`]).
+//! ([`lntrn_ui::UiState::take_clipboard_dirty`]). Files dragged in from
+//! outside arrive over the same connection ([`Clipboard::drag_events`]).
 
 use lntrn_core::log_info;
+use lntrn_math::Vec2;
 use lntrn_render::wgpu::rwh::RawDisplayHandle;
+use lntrn_ui::Event;
 
 pub struct Clipboard {
     #[cfg(target_os = "linux")]
@@ -73,6 +76,27 @@ impl Clipboard {
         {
             None
         }
+    }
+
+    /// What a drag from outside did since last time, as events at `scale`
+    /// physical pixels per logical one: the pointer's position, the files
+    /// hovering, a drop, or the drag leaving.
+    pub fn drag_events(&mut self, scale: f64) -> Vec<Event> {
+        let mut out = Vec::new();
+        #[cfg(target_os = "linux")]
+        if let Some(n) = &mut self.native {
+            for ev in n.take_drag_events() {
+                match ev {
+                    crate::wayland::DragEvent::Moved(x, y) => out.push(Event::PointerMoved(Vec2::new(x * scale, y * scale))),
+                    crate::wayland::DragEvent::Hovered(paths) => out.extend(paths.into_iter().map(Event::FileHovered)),
+                    crate::wayland::DragEvent::Left => out.push(Event::FileHoverLeft),
+                    crate::wayland::DragEvent::Dropped(paths) => out.extend(paths.into_iter().map(Event::FileDropped)),
+                }
+            }
+        }
+        #[cfg(not(target_os = "linux"))]
+        let _ = scale;
+        out
     }
 
     /// Put `text` on the system clipboard. `false` when it could not be.

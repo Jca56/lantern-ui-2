@@ -137,9 +137,11 @@ composition arrives as `Event::ImePreedit`, the
 focused text widget shows it inline at its caret with an underline and
 reports the caret rect (`ShellOutput::ime`) so the harness can place the
 candidate window; the committed text is an ordinary `Event::Text`.
-*Files from outside*: `Event::FileHovered` / `FileDropped`; a
-`Ui::drop_zone` under the pointer takes them, anything left reaches
-`Host::dropped` with the area under the pointer.
+*Files from outside*: `Event::FileHovered` / `FileDropped`, taken by the
+harness's own data device on Wayland (with the pointer position, so a
+`Ui::drop_zone` under the pointer takes them) and from winit on X11;
+anything no zone takes reaches `Host::dropped` with the area under the
+pointer.
 
 ## 4. The frame
 

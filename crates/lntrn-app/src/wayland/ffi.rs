@@ -230,8 +230,17 @@ pub mod op {
     pub const DEVICE_SET_SELECTION: u32 = 1;
     pub const SOURCE_OFFER: u32 = 0;
     pub const SOURCE_DESTROY: u32 = 1;
+    pub const OFFER_ACCEPT: u32 = 0;
     pub const OFFER_RECEIVE: u32 = 1;
     pub const OFFER_DESTROY: u32 = 2;
+    pub const OFFER_FINISH: u32 = 3;
+    pub const OFFER_SET_ACTIONS: u32 = 4;
+}
+
+/// Drag-and-drop action bits (`wl_data_device_manager.dnd_action`).
+pub mod dnd_action {
+    pub const COPY: u32 = 1;
+    pub const MOVE: u32 = 2;
 }
 
 #[cfg(test)]

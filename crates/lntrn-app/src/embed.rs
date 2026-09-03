@@ -102,11 +102,17 @@ impl<H: AppHost> Embedded<H> {
         self.dirty || self.wake.is_some_and(|w| Instant::now() >= w)
     }
 
-    /// Serve the system clipboard: another app may be waiting on a paste
-    /// of what this view copied. Call it from the owner's idle timer, a
-    /// few times a second, whether or not a frame is wanted.
+    /// Serve the system clipboard (another app may be waiting on a paste
+    /// of what this view copied) and take in files being dragged over the
+    /// view. Call it from the owner's idle timer, a few times a second,
+    /// whether or not a frame is wanted.
     pub fn poll(&mut self) {
         self.clipboard.poll();
+        let drag = self.clipboard.drag_events(self.scale);
+        if !drag.is_empty() {
+            self.events.extend(drag);
+            self.dirty = true;
+        }
     }
 
     /// Rebuild from the queued events, draw and present.
