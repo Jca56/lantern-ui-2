@@ -2,6 +2,7 @@
 //! rebuild → draw → present cycle.
 
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use lntrn_core::{log_error, log_info, log_trace};
 use lntrn_math::{Rect, Vec2};
@@ -11,7 +12,7 @@ use lntrn_text::TextEngine;
 use lntrn_ui::{CursorIcon, Event, Host, Modifiers, ResizeEdge, Shell, WindowCommand, WindowState};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
-use winit::event::WindowEvent;
+use winit::event::{StartCause, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
@@ -115,6 +116,8 @@ struct App<H: AppHost> {
     scale: f64,
     /// Something happened; rebuild before the loop goes back to sleep.
     dirty: bool,
+    /// An animation asked to be woken at this time.
+    wake: Option<Instant>,
     focused: bool,
     quit: bool,
 }
@@ -124,7 +127,7 @@ impl<H: AppHost> App<H> {
         let t = std::time::Instant::now();
         let text = TextEngine::new(&config.sans, &config.mono);
         log_info!("fonts: {} faces in {:.0} ms", text.face_count(), t.elapsed().as_secs_f64() * 1000.0);
-        Self { config, gfx: None, text, draw: DrawList::new(), shell, host, events: Vec::new(), mods: Modifiers::NONE, pointer: Vec2::ZERO, scale: 1.0, dirty: true, focused: true, quit: false }
+        Self { config, gfx: None, text, draw: DrawList::new(), shell, host, events: Vec::new(), mods: Modifiers::NONE, pointer: Vec2::ZERO, scale: 1.0, dirty: true, wake: None, focused: true, quit: false }
     }
 
     fn init_gfx(&mut self, event_loop: &ActiveEventLoop) {
@@ -199,6 +202,7 @@ impl<H: AppHost> App<H> {
             self.dirty = true;
         }
         let out = out.expect("at least one rebuild");
+        self.wake = out.wake_after.map(|s| Instant::now() + Duration::from_secs_f64(s));
 
         if out.cursor != gfx.cursor {
             gfx.cursor = out.cursor;
@@ -311,10 +315,22 @@ impl<H: AppHost> ApplicationHandler for App<H> {
         }
     }
 
-    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+    fn new_events(&mut self, _event_loop: &ActiveEventLoop, cause: StartCause) {
+        if matches!(cause, StartCause::ResumeTimeReached { .. }) {
+            self.wake = None;
+            self.dirty = true;
+        }
+    }
+
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         if self.dirty && let Some(g) = &self.gfx {
             self.dirty = false;
             g.window.request_redraw();
         }
+        // Sleep until input, or until the running animation's next frame.
+        event_loop.set_control_flow(match self.wake {
+            Some(at) => ControlFlow::WaitUntil(at),
+            None => ControlFlow::Wait,
+        });
     }
 }

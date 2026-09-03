@@ -6,6 +6,7 @@ use lntrn_math::{Color, Rect, Vec2};
 use lntrn_render::DrawList;
 use lntrn_text::{GlyphQuad, TextEngine, TextMetrics, TextStyle};
 
+use crate::event::Key;
 use crate::id::WidgetId;
 use crate::state::UiState;
 use crate::theme::{Metrics, Theme};
@@ -29,6 +30,17 @@ impl Sense {
     pub const CLICK: Sense = Sense { click: true, drag: false, focus: false };
     pub const DRAG: Sense = Sense { click: true, drag: true, focus: false };
     pub const FOCUS: Sense = Sense { click: true, drag: true, focus: true };
+}
+
+/// What the arrow keys asked of a focused value (see [`Ui::key_step`]).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum KeyStep {
+    #[default]
+    None,
+    /// Net steps: positive is more.
+    By(i32),
+    Min,
+    Max,
 }
 
 /// What happened to a widget this frame.
@@ -241,6 +253,121 @@ impl<'a> Ui<'a> {
     pub fn space(&mut self, h: f64) {
         self.cursor.y += h;
         self.max_y = self.max_y.max(self.cursor.y);
+    }
+
+    /// Side-by-side columns from the same top. `widths` are pixels, or
+    /// [`FILL`] to share what is left; `f(ui, i)` declares column `i`.
+    /// Layout continues below the tallest column.
+    pub fn columns(&mut self, widths: &[f64], mut f: impl FnMut(&mut Ui, usize)) {
+        if widths.is_empty() {
+            return;
+        }
+        let gap = self.m.gap;
+        let fixed: f64 = widths.iter().filter(|w| **w != FILL).sum();
+        let fills = widths.iter().filter(|w| **w == FILL).count();
+        let fill_w = if fills == 0 { 0.0 } else { ((self.avail_w - fixed - gap * (widths.len() as f64 - 1.0)) / fills as f64).max(0.0) };
+        let (top, saved_w) = (self.cursor, self.avail_w);
+        let mut bottom = top.y;
+        let mut x = top.x;
+        for (i, w) in widths.iter().enumerate() {
+            let w = if *w == FILL { fill_w } else { *w };
+            self.cursor = Vec2::new(x, top.y);
+            self.avail_w = w;
+            self.push_index(i);
+            f(self, i);
+            self.pop_id();
+            bottom = bottom.max(self.cursor.y);
+            x += w + gap;
+        }
+        self.cursor = Vec2::new(top.x, bottom);
+        self.avail_w = saved_w;
+        self.max_y = self.max_y.max(bottom);
+    }
+
+    // ---- time -------------------------------------------------------------
+
+    /// Seconds since the app started, as of this rebuild.
+    pub fn now(&self) -> f64 {
+        self.state.now
+    }
+
+    /// Ease a per-widget value toward `target`, settling in about `seconds`.
+    /// Keeps asking for rebuilds while it moves, so hover fades and sliding
+    /// panels cost nothing once they rest. A fresh slot starts at `target`.
+    pub fn animate(&mut self, id: WidgetId, target: f64, seconds: f64) -> f64 {
+        let now = self.state.now;
+        let a = self.state.anim(id, target);
+        // A long idle must not turn into one huge step.
+        let dt = (now - a.time).clamp(0.0, 0.1);
+        a.time = now;
+        if seconds <= 0.0 {
+            a.value = target;
+            return target;
+        }
+        let k = 1.0 - (-dt * 4.0 / seconds).exp();
+        a.value += (target - a.value) * k;
+        let settled = (a.value - target).abs() < 0.001;
+        if settled {
+            a.value = target;
+        }
+        let v = a.value;
+        if !settled {
+            self.state.request_redraw_after(1.0 / 60.0);
+        }
+        v
+    }
+
+    // ---- keyboard focus ---------------------------------------------------
+
+    /// Register `id` as a stop on the Tab order and report whether it has
+    /// keyboard focus. Call after [`Self::interact`]: a press on the widget
+    /// focuses it too.
+    pub fn focusable(&mut self, id: WidgetId) -> bool {
+        self.state.focus_order.push(id);
+        if self.state.pressed && self.state.active == Some(id) {
+            self.state.focus = Some(id);
+        }
+        self.state.focus == Some(id)
+    }
+
+    /// Enter or Space on the keyboard-focused widget counts as a click.
+    pub fn key_click(&mut self, id: WidgetId, r: &mut Response) {
+        if self.state.focus == Some(id) && self.state.take_key(|k| matches!(k.key, Key::Enter | Key::Space) && k.mods.is_empty()).is_some() {
+            r.clicked = true;
+            self.state.request_rebuild = true;
+        }
+    }
+
+    /// The focus ring around `rect`, when `id` has keyboard focus and the
+    /// user is navigating by keyboard.
+    pub fn focus_ring(&mut self, id: WidgetId, rect: Rect) {
+        if self.state.focus == Some(id) && self.state.focus_visible {
+            let w = self.m.px(2.0);
+            self.draw.stroke_rect(rect.expand(w), w, self.m.radius + w, self.theme.focus);
+        }
+    }
+
+    /// Arrow keys on the keyboard-focused widget this frame: Up/Right is
+    /// more, Down/Left is less, Home and End go to the ends.
+    pub fn key_step(&mut self, id: WidgetId) -> KeyStep {
+        if self.state.focus != Some(id) {
+            return KeyStep::None;
+        }
+        let mut by = 0;
+        let mut end = KeyStep::None;
+        while let Some(k) = self.state.take_key(|k| matches!(k.key, Key::ArrowUp | Key::ArrowRight | Key::ArrowDown | Key::ArrowLeft | Key::Home | Key::End)) {
+            self.state.request_rebuild = true;
+            match k.key {
+                Key::ArrowUp | Key::ArrowRight => by += 1,
+                Key::ArrowDown | Key::ArrowLeft => by -= 1,
+                Key::Home => end = KeyStep::Min,
+                _ => end = KeyStep::Max,
+            }
+        }
+        match end {
+            KeyStep::None if by != 0 => KeyStep::By(by),
+            other => other,
+        }
     }
 
     /// Move the layout origin (scroll areas).

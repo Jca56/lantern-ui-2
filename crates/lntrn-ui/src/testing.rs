@@ -47,6 +47,7 @@ pub struct Harness {
     events: Vec<Event>,
     /// Rects of the last frame, kept after the state clears its own.
     rects: HashMap<WidgetId, Rect>,
+    clock: f64,
 }
 
 impl Harness {
@@ -54,6 +55,7 @@ impl Harness {
     pub fn new(width: f64, height: f64) -> Self {
         let mut state = UiState::new();
         state.record_rects = true;
+        state.set_time(0.0);
         Self {
             text: TextEngine::new("Inter", "JetBrains Mono"),
             draw: DrawList::new(),
@@ -65,6 +67,7 @@ impl Harness {
             mods: Modifiers::NONE,
             events: Vec::new(),
             rects: HashMap::new(),
+            clock: 0.0,
         }
     }
 
@@ -78,6 +81,17 @@ impl Harness {
 
     pub fn pointer(&self) -> Vec2 {
         self.pointer
+    }
+
+    /// Move the clock forward (frames see the new time; wall time is ignored
+    /// once this is called).
+    pub fn advance(&mut self, seconds: f64) {
+        self.clock += seconds;
+        self.state.set_time(self.clock);
+    }
+
+    pub fn time(&self) -> f64 {
+        self.clock
     }
 
     /// The rect a widget occupied in the last frame.
@@ -210,6 +224,7 @@ impl Harness {
         let events = std::mem::take(&mut self.events);
         self.draw.clear();
         shell.state.record_rects = true;
+        shell.state.set_time(self.clock);
         let ws = WindowState { maximized: true, focused: true };
         let out = shell.frame(host, &events, self.window, self.scale, ws, &mut self.text, &mut self.draw);
         self.rects = shell.state.rects.clone();

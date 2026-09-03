@@ -3,6 +3,7 @@
 
 mod basic;
 mod dropdown;
+mod knob;
 mod scroll;
 mod slider;
 mod text_field;

@@ -14,6 +14,10 @@ pub struct GalleryState {
     pub text: String,
     pub choice: usize,
     pub selected: usize,
+    pub gain: f64,
+    pub cutoff: f64,
+    pub resonance: f64,
+    pub progress: f64,
 }
 
 impl Default for GalleryState {
@@ -29,6 +33,10 @@ impl Default for GalleryState {
             text: "Type here".to_owned(),
             choice: 1,
             selected: 2,
+            gain: 0.5,
+            cutoff: 800.0,
+            resonance: 0.2,
+            progress: 0.4,
         }
     }
 }
@@ -36,13 +44,41 @@ impl Default for GalleryState {
 const CHOICES: [&str; 4] = ["Solid", "Wireframe", "Material Preview", "Rendered"];
 
 pub fn draw(ui: &mut Ui, g: &mut GalleryState) {
-    ui.tabs(&mut g.tab, &["Controls", "Text", "Lists"]);
+    ui.tabs(&mut g.tab, &["Controls", "Knobs", "Text", "Lists"]);
     ui.space(ui.m.gap);
     match g.tab {
         0 => controls(ui, g),
-        1 => text(ui, g),
+        1 => knobs(ui, g),
+        2 => text(ui, g),
         _ => lists(ui, g),
     }
+}
+
+fn knobs(ui: &mut Ui, g: &mut GalleryState) {
+    ui.scroll_area("knobs", None, |ui| {
+        ui.heading("Knobs");
+        ui.label_dim("Drag up or right for more, Shift for fine, double-click to type. Tab reaches everything; arrows nudge.");
+        ui.row(|ui| {
+            ui.knob("Gain", &mut g.gain, 0.0, 1.0);
+            ui.knob_sized("Cutoff", &mut g.cutoff, 20.0, 20000.0, 110.0);
+            ui.knob("Resonance", &mut g.resonance, 0.0, 1.0);
+        });
+        ui.separator();
+        ui.heading("Progress");
+        ui.slider("Set progress", &mut g.progress, 0.0, 1.0, 0.0);
+        ui.progress("Rendering", g.progress);
+        ui.progress("Scanning fonts", -1.0);
+        ui.separator();
+        ui.heading("Columns");
+        ui.columns(&[crate::ui::FILL, crate::ui::FILL, crate::ui::FILL], |ui, i| {
+            ui.label_dim(["Left", "Middle", "Right"][i]);
+            ui.button_wide(["Alpha", "Beta", "Gamma"][i]);
+            if i == 1 {
+                ui.toggle("Extra tall column", &mut g.toggle_a);
+            }
+        });
+        ui.label_dim("Layout continues below the tallest column.");
+    });
 }
 
 fn controls(ui: &mut Ui, g: &mut GalleryState) {

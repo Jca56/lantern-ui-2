@@ -49,4 +49,4 @@ pub use shell::{Shell, ShellOutput, WindowState};
 pub use state::{CursorIcon, KeyPress, UiState};
 pub use theme::{Metrics, Theme};
 pub use titlebar::{ResizeEdge, WindowCommand};
-pub use ui::{FILL, Response, Sense, Ui};
+pub use ui::{FILL, KeyStep, Response, Sense, Ui};

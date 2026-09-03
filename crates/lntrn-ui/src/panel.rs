@@ -12,7 +12,9 @@ impl Ui<'_> {
     pub fn collapsing(&mut self, label: &str, f: impl FnOnce(&mut Ui)) {
         let id = self.id(label);
         let rect = self.alloc(Vec2::new(FILL, self.m.widget_h));
-        let r = self.interact(id, rect, Sense::CLICK);
+        let mut r = self.interact(id, rect, Sense::CLICK);
+        self.focusable(id);
+        self.key_click(id, &mut r);
         if r.hovered {
             self.state.cursor_icon = CursorIcon::Pointer;
         }
@@ -39,6 +41,7 @@ impl Ui<'_> {
         let style = self.text_style();
         let inner = Rect::new(Vec2::new(c.x + s + self.m.pad, rect.min.y), rect.max);
         self.text_in_rect(label, &style, inner, self.theme.text);
+        self.focus_ring(id, rect);
         if open {
             self.push_id(label);
             let indent = self.m.pad * 2.0;

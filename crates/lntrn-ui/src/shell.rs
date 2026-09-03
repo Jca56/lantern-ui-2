@@ -30,6 +30,9 @@ pub struct ShellOutput {
     /// Something the title bar asked the window system to do.
     pub window_command: Option<WindowCommand>,
     pub quit: bool,
+    /// Rebuild again after this many seconds even without input (an
+    /// animation is running).
+    pub wake_after: Option<f64>,
 }
 
 /// Facts about the window the shell cannot know on its own.
@@ -333,6 +336,6 @@ impl<H: Host> Shell<H> {
         } else {
             sep_cursor.unwrap_or(self.state.cursor_icon)
         };
-        ShellOutput { cursor, rebuild_again: self.state.request_rebuild, clear: theme.bg, window_command, quit }
+        ShellOutput { cursor, rebuild_again: self.state.request_rebuild, clear: theme.bg, window_command, quit, wake_after: self.state.wake_after }
     }
 }

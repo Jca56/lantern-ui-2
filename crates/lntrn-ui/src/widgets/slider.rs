@@ -3,7 +3,7 @@
 use lntrn_math::{Rect, Vec2};
 
 use crate::state::CursorIcon;
-use crate::ui::{FILL, Sense, Ui};
+use crate::ui::{FILL, KeyStep, Sense, Ui};
 
 /// Human formatting: up to `decimals` places, trailing zeros trimmed.
 pub fn format_number(v: f64, decimals: usize) -> String {
@@ -30,6 +30,7 @@ impl Ui<'_> {
             return false;
         }
         let r = self.interact(id, rect, Sense::DRAG);
+        let focused = self.focusable(id);
         if r.double_clicked {
             self.begin_number_edit(id, *value);
         }
@@ -37,6 +38,20 @@ impl Ui<'_> {
             self.state.cursor_icon = CursorIcon::EwResize;
         }
         let mut changed = false;
+        if focused && max > min {
+            let fine = if self.state.mods.shift() { 0.001 } else { 0.01 };
+            let by = if step > 0.0 { step.max((max - min) * fine) } else { (max - min) * fine };
+            let v = match self.key_step(id) {
+                KeyStep::By(n) => clamp_step(*value + by * n as f64, min, max, step),
+                KeyStep::Min => min,
+                KeyStep::Max => max,
+                KeyStep::None => *value,
+            };
+            if v != *value {
+                *value = v;
+                changed = true;
+            }
+        }
         if r.dragging && max > min {
             let t = ((self.state.pointer.x - rect.min.x) / rect.width()).clamp(0.0, 1.0);
             let v = clamp_step(min + t * (max - min), min, max, step);
@@ -66,6 +81,7 @@ impl Ui<'_> {
             self.text_right(&shown, &style, inner, self.theme.accent_text);
             self.draw.pop_clip();
         }
+        self.focus_ring(id, rect);
         changed
     }
 
@@ -84,6 +100,7 @@ impl Ui<'_> {
             return false;
         }
         let r = self.interact(id, rect, Sense::DRAG);
+        let focused = self.focusable(id);
         if r.pressed {
             *self.state.drag_start(id) = *value;
         }
@@ -91,6 +108,20 @@ impl Ui<'_> {
             self.state.cursor_icon = CursorIcon::EwResize;
         }
         let mut changed = false;
+        if focused {
+            let fine = if self.state.mods.shift() { 0.1 } else { 1.0 };
+            let by = if decimals == 0 { 1.0 } else { step * 10.0 } * fine;
+            let v = match self.key_step(id) {
+                KeyStep::By(n) => (*value + by * n as f64).clamp(min, max),
+                KeyStep::Min if min.is_finite() => min,
+                KeyStep::Max if max.is_finite() => max,
+                _ => *value,
+            };
+            if v != *value {
+                *value = v;
+                changed = true;
+            }
+        }
         if r.held {
             let travelled = self.state.pointer.x - self.state.press_pos.x;
             if travelled.abs() >= 3.0 {
@@ -116,6 +147,7 @@ impl Ui<'_> {
         }
         let shown = format_number(*value, decimals);
         self.text_right(&shown, &style, inner, self.theme.text);
+        self.focus_ring(id, rect);
         changed
     }
 
@@ -130,7 +162,7 @@ impl Ui<'_> {
         changed
     }
 
-    fn begin_number_edit(&mut self, id: crate::WidgetId, value: f64) {
+    pub(crate) fn begin_number_edit(&mut self, id: crate::WidgetId, value: f64) {
         let text = format_number(value, 6);
         let te = self.state.text_edit(id);
         te.buffer = Some(text.clone());
@@ -142,7 +174,7 @@ impl Ui<'_> {
 
     /// If `id` is being typed into, run the editor and report:
     /// `Some(Some(v))` committed, `Some(None)` still editing or cancelled.
-    fn number_editing(&mut self, id: crate::WidgetId, rect: Rect, current: f64) -> Option<Option<f64>> {
+    pub(crate) fn number_editing(&mut self, id: crate::WidgetId, rect: Rect, current: f64) -> Option<Option<f64>> {
         let editing = self.state.text_edit(id).buffer.is_some() && self.state.has_focus(id);
         if !editing {
             if self.state.text_edit(id).buffer.is_some() {

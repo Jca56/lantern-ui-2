@@ -58,13 +58,16 @@ impl Ui<'_> {
     pub fn button_sized(&mut self, label: &str, size: Vec2) -> Response {
         let id = self.id(label);
         let rect = self.alloc(size);
-        let r = self.interact(id, rect, Sense::CLICK);
+        let mut r = self.interact(id, rect, Sense::CLICK);
+        self.focusable(id);
+        self.key_click(id, &mut r);
         if r.hovered {
             self.state.cursor_icon = CursorIcon::Pointer;
         }
         self.button_face(rect, &r);
         let style = self.text_style();
         self.text_centered(label, &style, rect, self.theme.text);
+        self.focus_ring(id, rect);
         r
     }
 
@@ -80,7 +83,9 @@ impl Ui<'_> {
     /// An icon button over a rect placed by the caller. `lit` is the
     /// (face, ink) pair of an active button; `None` draws it as a plain button.
     pub fn icon_button_in(&mut self, id: WidgetId, rect: Rect, icon: Icon, lit: Option<(Color, Color)>, tip: &str) -> Response {
-        let r = self.interact(id, rect, Sense::CLICK);
+        let mut r = self.interact(id, rect, Sense::CLICK);
+        self.focusable(id);
+        self.key_click(id, &mut r);
         if r.hovered {
             self.state.cursor_icon = CursorIcon::Pointer;
         }
@@ -98,6 +103,7 @@ impl Ui<'_> {
             }
         };
         icons::draw(self.draw, rect, icon, ink, self.m.px(2.0));
+        self.focus_ring(id, rect);
         self.tooltip(&r, tip);
         r
     }
@@ -109,7 +115,9 @@ impl Ui<'_> {
         let box_size = self.m.px(25.0);
         let w = if self.in_row() { box_size + self.m.gap + self.measure(label, &style) } else { FILL };
         let rect = self.alloc(Vec2::new(w, self.m.widget_h));
-        let r = self.interact(id, rect, Sense::CLICK);
+        let mut r = self.interact(id, rect, Sense::CLICK);
+        self.focusable(id);
+        self.key_click(id, &mut r);
         if r.clicked {
             *value = !*value;
         }
@@ -138,6 +146,7 @@ impl Ui<'_> {
         }
         let text_rect = Rect::new(Vec2::new(bx.max.x + self.m.gap, rect.min.y), rect.max);
         self.text_in_rect(label, &style, text_rect, self.theme.text);
+        self.focus_ring(id, bx);
         r.clicked
     }
 
@@ -145,7 +154,9 @@ impl Ui<'_> {
     pub fn selectable(&mut self, label: &str, selected: bool) -> Response {
         let id = self.id(label);
         let rect = self.alloc(Vec2::new(FILL, self.m.widget_h));
-        let r = self.interact(id, rect, Sense::CLICK);
+        let mut r = self.interact(id, rect, Sense::CLICK);
+        self.focusable(id);
+        self.key_click(id, &mut r);
         if r.hovered {
             self.state.cursor_icon = CursorIcon::Pointer;
         }
@@ -160,6 +171,7 @@ impl Ui<'_> {
             }
             self.text_in_rect_padded(label, &style, rect, self.theme.text);
         }
+        self.focus_ring(id, rect);
         r
     }
 
@@ -181,7 +193,9 @@ impl Ui<'_> {
                 Vec2::new(w.round(), rect.height()),
             );
             let id = self.id(label).with_index(i);
-            let r = self.interact(id, tr, Sense::CLICK);
+            let mut r = self.interact(id, tr, Sense::CLICK);
+            self.focusable(id);
+            self.key_click(id, &mut r);
             if r.clicked && *selected != i {
                 *selected = i;
                 changed = true;
@@ -199,8 +213,49 @@ impl Ui<'_> {
                 self.button_face(tr, &r);
                 self.text_centered(label, &style, tr, self.theme.text);
             }
+            self.focus_ring(id, tr);
         }
         changed
+    }
+
+    /// A bar filled to `t` in `0..=1`, with the label inside. A negative
+    /// `t` shows a busy bar sweeping back and forth until it is given a
+    /// value.
+    pub fn progress(&mut self, label: &str, t: f64) {
+        let rect = self.alloc(Vec2::new(FILL, self.m.widget_h));
+        let style = self.text_style();
+        self.recessed(rect, self.theme.field);
+        let inner = rect.shrink(self.m.border);
+        let filled = if t < 0.0 {
+            // A third of the track, bouncing once every 1.6 seconds.
+            let phase = (self.state.now / 1.6).fract();
+            let x = if phase < 0.5 { phase * 2.0 } else { 2.0 - phase * 2.0 };
+            let w = inner.width() / 3.0;
+            let x0 = inner.min.x + (inner.width() - w) * x;
+            self.state.request_redraw_after(1.0 / 60.0);
+            Rect::new(Vec2::new(x0, inner.min.y), Vec2::new(x0 + w, inner.max.y))
+        } else {
+            Rect::new(inner.min, Vec2::new(inner.min.x + inner.width() * t.clamp(0.0, 1.0), inner.max.y))
+        };
+        if filled.width() >= 1.0 {
+            self.draw.push_clip(filled);
+            self.fill_shaded(inner, self.theme.accent);
+            self.draw.pop_clip();
+        }
+        let text_rect = Rect::new(Vec2::new(rect.min.x + self.m.pad, rect.min.y), Vec2::new(rect.max.x - self.m.pad, rect.max.y));
+        let percent = format!("{}%", (t.clamp(0.0, 1.0) * 100.0).round());
+        self.text_in_rect(label, &style, text_rect, self.theme.text);
+        if t >= 0.0 {
+            self.text_right(&percent, &style, text_rect, self.theme.text);
+        }
+        if filled.width() >= 1.0 {
+            self.draw.push_clip(filled);
+            self.text_in_rect(label, &style, text_rect, self.theme.accent_text);
+            if t >= 0.0 {
+                self.text_right(&percent, &style, text_rect, self.theme.accent_text);
+            }
+            self.draw.pop_clip();
+        }
     }
 
     /// Thin horizontal rule with breathing room.

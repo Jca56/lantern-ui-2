@@ -2,12 +2,15 @@
 //! which widget is hot/active/focused, open popups, and per-widget memory.
 
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use lntrn_math::{Rect, Vec2};
 
 use crate::event::{Event, Key, Modifiers, MouseButton};
 use crate::id::WidgetId;
+
+/// Two presses closer than this (and within 6px) are a double click.
+const DOUBLE_CLICK_SECS: f64 = 0.4;
 
 /// What the pointer should look like, decided by whatever is under it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -104,8 +107,44 @@ pub struct UiState {
     pub record_rects: bool,
     /// Widget rects of this frame, when [`Self::record_rects`] is on.
     pub rects: HashMap<WidgetId, Rect>,
-    last_click: Option<(Instant, Vec2)>,
-    mem: HashMap<WidgetId, Mem>,
+    /// Seconds since the state was made, as of this frame.
+    pub now: f64,
+    /// Rebuild again after this many seconds even with no input (an
+    /// animation is running). `None`: sleep until input.
+    pub wake_after: Option<f64>,
+    /// The clipboard. In-app for now; the harness syncs it with the system
+    /// one when it can.
+    pub clipboard: String,
+    /// Keyboard-focusable widgets of this frame in declaration order; Tab
+    /// walks it (see [`crate::Ui::focusable`]).
+    pub focus_order: Vec<WidgetId>,
+    /// Draw focus rings: on after keyboard navigation, off again on a
+    /// pointer press.
+    pub focus_visible: bool,
+    /// Time and place of the last press, for double clicks (frame clock).
+    last_click: Option<(f64, Vec2)>,
+    start: Instant,
+    manual_time: Option<f64>,
+    /// Per-widget memory, keyed by id and kind: a number field keeps both
+    /// its typing buffer and its drag origin.
+    mem: HashMap<(WidgetId, MemKind), Mem>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum MemKind {
+    Text,
+    Scroll,
+    Open,
+    DragStart,
+    Anim,
+}
+
+/// An eased value on its way to a target (see [`crate::Ui::animate`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct AnimMem {
+    pub value: f64,
+    /// When it was last stepped.
+    pub time: f64,
 }
 
 enum Mem {
@@ -113,6 +152,7 @@ enum Mem {
     Scroll(ScrollMem),
     Open(bool),
     DragStart(f64),
+    Anim(AnimMem),
 }
 
 impl Default for UiState {
@@ -150,9 +190,28 @@ impl UiState {
             request_rebuild: false,
             record_rects: false,
             rects: HashMap::new(),
+            now: 0.0,
+            wake_after: None,
+            clipboard: String::new(),
+            focus_order: Vec::new(),
+            focus_visible: false,
             last_click: None,
+            start: Instant::now(),
+            manual_time: None,
             mem: HashMap::new(),
         }
+    }
+
+    /// Drive the clock by hand (tests): time no longer follows the wall.
+    pub fn set_time(&mut self, seconds: f64) {
+        self.manual_time = Some(seconds);
+    }
+
+    /// Ask for a rebuild in `seconds` even without input. The soonest
+    /// request wins.
+    pub fn request_redraw_after(&mut self, seconds: f64) {
+        let s = seconds.max(0.0);
+        self.wake_after = Some(self.wake_after.map_or(s, |w| w.min(s)));
     }
 
     /// Fold this frame's events into the state. `line_px` converts wheel
@@ -172,6 +231,9 @@ impl UiState {
         self.request_rebuild = false;
         self.popup_seen = false;
         self.rects.clear();
+        self.focus_order.clear();
+        self.wake_after = None;
+        self.now = self.manual_time.unwrap_or_else(|| self.start.elapsed().as_secs_f64());
         let start = self.pointer;
         for ev in events {
             match ev {
@@ -183,11 +245,10 @@ impl UiState {
                 Event::Button { button: MouseButton::Left, pressed: true, pos, .. } => {
                     self.down = true;
                     self.pressed = true;
+                    self.press_visible_reset();
                     self.press_pos = *pos;
-                    let now = Instant::now();
-                    self.double_click = self
-                        .last_click
-                        .is_some_and(|(t, p)| now - t < Duration::from_millis(400) && p.distance(*pos) < 6.0);
+                    let now = self.now;
+                    self.double_click = self.last_click.is_some_and(|(t, p)| now - t < DOUBLE_CLICK_SECS && p.distance(*pos) < 6.0);
                     self.last_click = if self.double_click { None } else { Some((now, *pos)) };
                 }
                 Event::Button { button: MouseButton::Left, pressed: false, .. } => {
@@ -219,7 +280,12 @@ impl UiState {
         self.delta = self.pointer - start;
     }
 
-    /// Settle roles after every widget has run.
+    fn press_visible_reset(&mut self) {
+        self.focus_visible = false;
+    }
+
+    /// Settle roles after every widget has run. A Tab nobody consumed moves
+    /// keyboard focus along [`Self::focus_order`] (Shift+Tab backwards).
     pub fn end_frame(&mut self) {
         if self.pressed && !self.press_claimed {
             self.focus = None;
@@ -229,6 +295,21 @@ impl UiState {
         }
         if !self.popup_seen {
             self.popup = None;
+        }
+        if let Some(tab) = self.take_key(|k| k.key == Key::Tab && !k.mods.ctrl() && !k.mods.alt()) {
+            let n = self.focus_order.len();
+            if n > 0 {
+                let cur = self.focus.and_then(|f| self.focus_order.iter().position(|&x| x == f));
+                let next = match (cur, tab.mods.shift()) {
+                    (None, false) => 0,
+                    (None, true) => n - 1,
+                    (Some(c), false) => (c + 1) % n,
+                    (Some(c), true) => (c + n - 1) % n,
+                };
+                self.focus = Some(self.focus_order[next]);
+                self.focus_visible = true;
+                self.request_rebuild = true;
+            }
         }
     }
 
@@ -255,71 +336,54 @@ impl UiState {
     // ---- per-widget memory ----
 
     pub fn text_edit(&mut self, id: WidgetId) -> &mut TextEdit {
-        match self.mem.entry(id).or_insert_with(|| Mem::Text(TextEdit::default())) {
+        match self.mem.entry((id, MemKind::Text)).or_insert_with(|| Mem::Text(TextEdit::default())) {
             Mem::Text(t) => t,
-            other => {
-                *other = Mem::Text(TextEdit::default());
-                match other {
-                    Mem::Text(t) => t,
-                    _ => unreachable!(),
-                }
-            }
+            _ => unreachable!("slot kind is fixed by its key"),
         }
     }
 
     pub fn scroll(&mut self, id: WidgetId) -> &mut ScrollMem {
-        match self.mem.entry(id).or_insert_with(|| Mem::Scroll(ScrollMem::default())) {
+        match self.mem.entry((id, MemKind::Scroll)).or_insert_with(|| Mem::Scroll(ScrollMem::default())) {
             Mem::Scroll(s) => s,
-            other => {
-                *other = Mem::Scroll(ScrollMem::default());
-                match other {
-                    Mem::Scroll(s) => s,
-                    _ => unreachable!(),
-                }
-            }
+            _ => unreachable!("slot kind is fixed by its key"),
         }
     }
 
     pub fn open(&mut self, id: WidgetId) -> &mut bool {
-        match self.mem.entry(id).or_insert(Mem::Open(false)) {
+        match self.mem.entry((id, MemKind::Open)).or_insert(Mem::Open(false)) {
             Mem::Open(b) => b,
-            other => {
-                *other = Mem::Open(false);
-                match other {
-                    Mem::Open(b) => b,
-                    _ => unreachable!(),
-                }
-            }
+            _ => unreachable!("slot kind is fixed by its key"),
         }
     }
 
     /// Like [`Self::open`], but a fresh slot starts as `default`.
     pub fn open_default(&mut self, id: WidgetId, default: bool) -> bool {
-        match self.mem.entry(id).or_insert(Mem::Open(default)) {
+        match self.mem.entry((id, MemKind::Open)).or_insert(Mem::Open(default)) {
             Mem::Open(b) => *b,
-            other => {
-                *other = Mem::Open(default);
-                default
-            }
+            _ => unreachable!("slot kind is fixed by its key"),
         }
     }
 
     /// Value a drag started from (for number drags).
     pub fn drag_start(&mut self, id: WidgetId) -> &mut f64 {
-        match self.mem.entry(id).or_insert(Mem::DragStart(0.0)) {
+        match self.mem.entry((id, MemKind::DragStart)).or_insert(Mem::DragStart(0.0)) {
             Mem::DragStart(v) => v,
-            other => {
-                *other = Mem::DragStart(0.0);
-                match other {
-                    Mem::DragStart(v) => v,
-                    _ => unreachable!(),
-                }
-            }
+            _ => unreachable!("slot kind is fixed by its key"),
         }
     }
 
+    /// Eased-value slot; a fresh one starts at `init`.
+    pub fn anim(&mut self, id: WidgetId, init: f64) -> &mut AnimMem {
+        let now = self.now;
+        match self.mem.entry((id, MemKind::Anim)).or_insert(Mem::Anim(AnimMem { value: init, time: now })) {
+            Mem::Anim(a) => a,
+            _ => unreachable!("slot kind is fixed by its key"),
+        }
+    }
+
+    /// Drop every kind of memory `id` has.
     pub fn forget(&mut self, id: WidgetId) {
-        self.mem.remove(&id);
+        self.mem.retain(|(k, _), _| *k != id);
     }
 }
 
@@ -375,16 +439,49 @@ mod tests {
     }
 
     #[test]
+    fn tab_walks_focus_order() {
+        let mut s = UiState::new();
+        let (a, b, c) = (WidgetId::ROOT.with("a"), WidgetId::ROOT.with("b"), WidgetId::ROOT.with("c"));
+        let tab = |mods| Event::Key { key: Key::Tab, pressed: true, repeat: false, mods };
+        s.begin_frame(&[tab(Modifiers::NONE)], 1.0);
+        s.focus_order.extend([a, b, c]);
+        s.end_frame();
+        assert_eq!(s.focus, Some(a), "nothing focused: Tab goes to the first");
+        assert!(s.focus_visible && s.request_rebuild);
+        s.begin_frame(&[tab(Modifiers::SHIFT)], 1.0);
+        s.focus_order.extend([a, b, c]);
+        s.end_frame();
+        assert_eq!(s.focus, Some(c), "Shift+Tab wraps backwards");
+        s.begin_frame(&[tab(Modifiers::NONE)], 1.0);
+        s.focus_order.extend([a, b, c]);
+        s.end_frame();
+        assert_eq!(s.focus, Some(a), "and Tab wraps forwards");
+        s.begin_frame(&[Event::Button { button: MouseButton::Left, pressed: true, pos: Vec2::ZERO, mods: Modifiers::NONE }], 1.0);
+        assert!(!s.focus_visible, "a pointer press hides the rings");
+        s.set_time(5.0);
+        s.begin_frame(&[], 1.0);
+        assert_eq!(s.now, 5.0);
+        s.request_redraw_after(0.5);
+        s.request_redraw_after(0.2);
+        s.request_redraw_after(0.9);
+        assert_eq!(s.wake_after, Some(0.2), "the soonest wins");
+    }
+
+    #[test]
     fn memory_slots() {
         let mut s = UiState::new();
         let id = WidgetId::ROOT.with("x");
         s.text_edit(id).cursor = 3;
         assert_eq!(s.text_edit(id).cursor, 3);
-        *s.open(id) = true; // slot repurposed
+        *s.open(id) = true;
+        *s.drag_start(id) = 4.5;
         assert!(*s.open(id));
+        assert_eq!(s.text_edit(id).cursor, 3, "one id keeps every kind of memory at once");
+        assert_eq!(*s.drag_start(id), 4.5);
         s.scroll(id).offset = 9.0;
         assert_eq!(s.scroll(id).offset, 9.0);
         s.forget(id);
         assert_eq!(s.scroll(id).offset, 0.0);
+        assert_eq!(*s.drag_start(id), 0.0);
     }
 }

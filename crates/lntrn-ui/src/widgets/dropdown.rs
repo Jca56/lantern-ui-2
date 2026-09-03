@@ -5,7 +5,7 @@ use lntrn_math::{Rect, Vec2};
 use crate::event::Key;
 use crate::id::WidgetId;
 use crate::state::CursorIcon;
-use crate::ui::{FILL, Sense, Ui};
+use crate::ui::{FILL, KeyStep, Sense, Ui};
 
 /// Outcome of a popup list this frame.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -26,9 +26,24 @@ impl Ui<'_> {
             FILL
         };
         let rect = self.alloc(Vec2::new(w, self.m.widget_h));
-        let r = self.interact(id, rect, Sense::CLICK);
+        let mut r = self.interact(id, rect, Sense::CLICK);
+        let focused = self.focusable(id);
+        self.key_click(id, &mut r);
         if r.hovered {
             self.state.cursor_icon = CursorIcon::Pointer;
+        }
+        let mut stepped = false;
+        if focused && !options.is_empty() {
+            let next = match self.key_step(id) {
+                KeyStep::By(n) => (*selected as i64 + n as i64).clamp(0, options.len() as i64 - 1) as usize,
+                KeyStep::Min => 0,
+                KeyStep::Max => options.len() - 1,
+                KeyStep::None => *selected,
+            };
+            if next != *selected {
+                *selected = next;
+                stepped = true;
+            }
         }
         let open = *self.state.open(id);
         let well = if r.hovered || open { self.theme.hover(self.theme.field) } else { self.theme.field };
@@ -41,6 +56,7 @@ impl Ui<'_> {
         let current = options.get(*selected).copied().unwrap_or("");
         self.text_in_rect(current, &style, inner, self.theme.text);
         self.draw_chevron(rect);
+        self.focus_ring(id, rect);
 
         if r.clicked {
             *self.state.open(id) = !open;
@@ -58,7 +74,7 @@ impl Ui<'_> {
                 *self.state.open(id) = false;
             }
         }
-        false
+        stepped
     }
 
     /// A button that opens a menu. Returns the picked item index.
@@ -67,7 +83,9 @@ impl Ui<'_> {
         let style = self.text_style();
         let w = self.measure(label, &style) + self.m.pad * 2.0;
         let rect = self.alloc(Vec2::new(w, self.m.widget_h));
-        let r = self.interact(id, rect, Sense::CLICK);
+        let mut r = self.interact(id, rect, Sense::CLICK);
+        self.focusable(id);
+        self.key_click(id, &mut r);
         if r.hovered {
             self.state.cursor_icon = CursorIcon::Pointer;
         }
@@ -78,6 +96,7 @@ impl Ui<'_> {
         }
         self.raised(rect, base, open_now || r.held);
         self.text_centered(label, &style, rect, self.theme.text);
+        self.focus_ring(id, rect);
         if r.clicked {
             *self.state.open(id) = !open_now;
             self.state.request_rebuild = true;

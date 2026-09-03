@@ -63,6 +63,7 @@ impl Ui<'_> {
     /// The editor behind text fields and number typing. Draws into `rect`.
     pub fn text_edit_core(&mut self, id: WidgetId, rect: Rect, value: &mut String) -> TextResponse {
         let r = self.interact(id, rect, Sense::FOCUS);
+        self.focusable(id);
         if r.hovered {
             self.state.cursor_icon = CursorIcon::Text;
         }
@@ -92,9 +93,48 @@ impl Ui<'_> {
                 let b = byte_at_x(&adv, self.state.pointer.x - inner.min.x + scroll);
                 self.state.text_edit(id).cursor = b;
             }
-            // Keyboard.
-            let keys: Vec<_> = self.state.keys.drain(..).collect();
+            // Keyboard. Tab is left for the focus walk.
+            let mut keys = Vec::new();
+            self.state.keys.retain(|k| {
+                if k.key == Key::Tab {
+                    true
+                } else {
+                    keys.push(*k);
+                    false
+                }
+            });
             for k in keys {
+                if k.mods.ctrl() && matches!(k.key, Key::Char('c' | 'x' | 'v')) {
+                    let (s0, s1) = self.state.text_edit(id).selection();
+                    match k.key {
+                        Key::Char('c') => {
+                            if s1 > s0 {
+                                self.state.clipboard = value[s0..s1].to_owned();
+                            }
+                        }
+                        Key::Char('x') => {
+                            if s1 > s0 {
+                                self.state.clipboard = value[s0..s1].to_owned();
+                                value.replace_range(s0..s1, "");
+                                let te = self.state.text_edit(id);
+                                te.cursor = s0;
+                                te.anchor = s0;
+                                out.changed = true;
+                            }
+                        }
+                        _ => {
+                            let pasted: String = self.state.clipboard.chars().filter(|c| !c.is_control()).collect();
+                            if !pasted.is_empty() {
+                                value.replace_range(s0..s1, &pasted);
+                                let te = self.state.text_edit(id);
+                                te.cursor = s0 + pasted.len();
+                                te.anchor = te.cursor;
+                                out.changed = true;
+                            }
+                        }
+                    }
+                    continue;
+                }
                 let te = self.state.text_edit(id);
                 let (s0, s1) = te.selection();
                 match k.key {
