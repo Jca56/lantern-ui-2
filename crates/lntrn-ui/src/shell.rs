@@ -10,6 +10,7 @@ use lntrn_props::{Reflect, Value};
 use lntrn_render::DrawList;
 use lntrn_text::TextEngine;
 
+use crate::area_header::{AreaAction, HeaderIn, area_header};
 use crate::debug_overlay::FrameStats;
 use crate::event::{Event, MouseButton};
 use crate::file_browser::FileBrowser;
@@ -22,7 +23,7 @@ use crate::screen::{AreaId, Axis, Screen};
 use crate::state::{CursorIcon, UiState};
 use crate::theme::Metrics;
 use crate::titlebar::WindowCommand;
-use crate::ui::{Sense, Ui};
+use crate::ui::Ui;
 
 /// What the app needs to know after a rebuild.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -49,13 +50,6 @@ pub struct ShellOutput {
 pub struct WindowState {
     pub maximized: bool,
     pub focused: bool,
-}
-
-enum AreaAction<E> {
-    Split(AreaId, Axis),
-    Close(AreaId),
-    Maximize(AreaId),
-    SetEditor(AreaId, E),
 }
 
 pub struct Shell<H: Host> {
@@ -147,6 +141,11 @@ impl<H: Host> Shell<H> {
             ShellRequest::Maximize(area) => {
                 if let Some(a) = area.or(self.screen.active) {
                     self.screen.toggle_maximize(a);
+                }
+            }
+            ShellRequest::CycleTab(by) => {
+                if let Some(a) = self.screen.active {
+                    self.screen.cycle_tab(a, by);
                 }
             }
             ShellRequest::ClosePopup => {
@@ -287,7 +286,9 @@ impl<H: Host> Shell<H> {
             let Some(area) = self.screen.area_mut(l.area) else {
                 continue;
             };
-            let kind = area.editor;
+            let kind = area.editor();
+            let current_tab = area.current;
+            let tab_labels: Vec<String> = area.tabs.iter().map(|t| host.editor_label(t.editor).to_owned()).collect();
             let base = WidgetId::ROOT.with_u64(l.area as u64);
 
             draw.set_layer(0);
@@ -307,39 +308,19 @@ impl<H: Host> Shell<H> {
             );
             let mut ui = Ui::new(draw, text, &theme, m, &mut self.state, content, l.header, base.with("header"), 0);
             ui.set_window_rect(window);
-            ui.row(|ui| {
-                let mut idx = editors.iter().position(|&k| k == kind).unwrap_or(0);
-                if ui.dropdown("editor", &mut idx, &label_refs) {
-                    actions.push(AreaAction::SetEditor(l.area, editors[idx]));
-                }
-                let mut cx = AreaCx { area: l.area, state: &mut area.state, active, pointer, prefs: &mut self.prefs, requests: &mut requests };
-                host.draw_header(kind, ui, &mut cx);
-                let style = ui.text_style();
-                let menu_w = ui.measure("⋮", &style) + ui.m.pad * 2.0;
-                let spacer = (ui.avail_width() - menu_w - ui.m.gap).max(0.0);
-                // The empty stretch of the header is a grip: drag it onto
-                // another area to swap the two.
-                let grip = ui.alloc(Vec2::new(spacer, ui.m.widget_h));
-                let g = ui.interact(ui.id("grip"), grip, Sense::DRAG);
-                if g.pressed {
-                    grip_pressed = Some(l.area);
-                }
-                let max_label = if maximized == Some(l.area) { "Restore" } else { "Maximize" };
-                if let Some(i) = ui.menu_button("⋮", &[max_label, "Split Left | Right", "Split Top | Bottom", "Close Area"]) {
-                    actions.push(match i {
-                        0 => AreaAction::Maximize(l.area),
-                        1 => AreaAction::Split(l.area, Axis::Horizontal),
-                        2 => AreaAction::Split(l.area, Axis::Vertical),
-                        _ => AreaAction::Close(l.area),
-                    });
-                }
-            });
+            let mut cx = AreaCx { area: l.area, state: area.state_mut(), active, pointer, prefs: &mut self.prefs, requests: &mut requests };
+            let header = HeaderIn { area: l.area, kind, editors: &editors, labels: &label_refs, tabs: &tab_labels, current: current_tab, maximized: maximized == Some(l.area) };
+            let out = area_header(&mut ui, host, &mut cx, header);
             ui.finish();
+            actions.extend(out.actions);
+            if out.grip_pressed {
+                grip_pressed = Some(l.area);
+            }
 
             let body_content = l.body.shrink(m.pad);
             let mut ui = Ui::new(draw, text, &theme, m, &mut self.state, body_content, l.body, base.with("body"), 0);
             ui.set_window_rect(window);
-            let mut cx = AreaCx { area: l.area, state: &mut area.state, active, pointer, prefs: &mut self.prefs, requests: &mut requests };
+            let mut cx = AreaCx { area: l.area, state: area.state_mut(), active, pointer, prefs: &mut self.prefs, requests: &mut requests };
             changed_globals |= host.draw_body(kind, &mut ui, &mut cx);
             ui.finish();
         }
@@ -395,7 +376,7 @@ impl<H: Host> Shell<H> {
         let dropped = self.state.take_dropped_files();
         if !dropped.is_empty() {
             let area = if self.state.pointer_in_window { self.screen.area_at(pointer) } else { None };
-            let editor = area.and_then(|a| self.screen.area(a)).map(|a| a.editor);
+            let editor = area.and_then(|a| self.screen.area(a)).map(|a| a.editor());
             host.dropped(&dropped, area, editor, &mut HostCx { pointer, requests: &mut requests });
             self.state.request_rebuild = true;
         }
@@ -429,17 +410,24 @@ impl<H: Host> Shell<H> {
         for a in actions {
             match a {
                 AreaAction::Split(area, axis) => {
-                    if let Some(kind) = self.screen.area(area).map(|a| a.editor) {
+                    if let Some(kind) = self.screen.area(area).map(|a| a.editor()) {
                         self.screen.split(area, axis, 0.5, kind);
                     }
                 }
+                AreaAction::AddTab(area, kind) => {
+                    self.screen.add_tab(area, kind);
+                }
+                AreaAction::CloseTab(area) => {
+                    self.screen.close_tab(area);
+                }
+                AreaAction::SelectTab(area, tab) => self.screen.select_tab(area, tab),
                 AreaAction::Close(area) => {
                     self.screen.join(area);
                 }
                 AreaAction::Maximize(area) => self.screen.toggle_maximize(area),
                 AreaAction::SetEditor(area, kind) => {
                     if let Some(a) = self.screen.area_mut(area) {
-                        a.editor = kind;
+                        a.set_editor(kind);
                     }
                 }
             }

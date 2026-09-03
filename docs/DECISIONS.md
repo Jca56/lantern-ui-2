@@ -306,3 +306,17 @@ and the cure.
 `lntrn_image::encode_png`, a stored-deflate writer: exact pixels, no
 compression) or sets `clipboard_image_wanted` and finds the decoded
 picture in `clipboard_image` on the next rebuild.
+
+## U019 — An area is a stack of tabs
+**Status:** Accepted (2026-09-03)
+**Decision:** `Area` holds `tabs: Vec<Tab { editor, state }>` and a
+`current`; the header shows a strip once there are two, a `+` that lists
+the editors, and a *Close Tab* row in its `⋮` menu. `shell.next_tab` and
+`shell.prev_tab` cycle. The saved layout writes a leaf as
+`[Gallery|Notes*]`, the shown tab starred; a one-tab leaf stays `[Name]`,
+so old layout files still read. Per-tab state means a camera or a
+selection survives switching tabs.
+**Why:** Blender's workspaces without the workspace: the tree of splits
+stays the layout, and a tab is just another editor in the same place.
+**Rejected:** Tabs as a widget the host draws itself in every editor
+(every app would rebuild the same strip and lose it in the saved layout).

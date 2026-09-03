@@ -53,9 +53,11 @@ lntrn-demo     Widget gallery + Preferences + Notes editors: the reference Host.
 ```
 
 **Retained** — `Screen<E, S>` is a binary tree of splits whose leaves are
-areas. Each area has an editor kind `E` (the host's enum) and a state `S`
-(the host's per-area data: a camera, a selection; `()` when none). It
-changes only when the user splits, joins or drags a separator.
+areas. Each area holds a stack of tabs, one shown at a time, and each tab
+has an editor kind `E` (the host's enum) and a state `S` (the host's
+per-tab data: a camera, a selection; `()` when none). It changes only
+when the user splits, joins or drags a separator, or adds, closes or
+switches a tab (`+` and `⋮` in the header, `shell.next_tab`).
 
 **Immediate** — inside every header and body the host re-declares its
 widgets each rebuild through a `Ui`: `ui.slider("Opacity", &mut v, 0.0,
@@ -122,7 +124,7 @@ lands in the right order even inside one frame.
 
 **Persistence** — `Prefs` is a `props!` struct saved as field-id-tagged
 bytes (`persist::save`); the area tree is one line of text
-(`Screen::describe`). `lntrn_app::run` loads both from
+(`Screen::describe`; tabs as `[Gallery|Notes*]`). `lntrn_app::run` loads both from
 `~/.config/<app_id>/` and writes them back on exit.
 
 **The outside world** — three things cross the window boundary, all in

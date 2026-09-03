@@ -55,6 +55,7 @@ impl Host for Tiny {
             Key::Char('t') => Some(Action::new("toast")),
             Key::Char('r') => Some(Action::new("rename")),
             Key::Space if press.mods.ctrl() => Some(Action::new(actions::MAXIMIZE)),
+            Key::Tab if press.mods.ctrl() => Some(Action::new(actions::NEXT_TAB)),
             _ => None,
         }
     }
@@ -199,11 +200,46 @@ fn dragging_a_header_onto_another_area_swaps_them() {
     assert_eq!(out.cursor, lntrn_ui::CursorIcon::Grabbing, "a drag is under way");
     h.release();
     h.shell_settle(&mut shell, &mut host, 3);
-    assert_eq!(shell.screen.area(0).unwrap().editor, 1, "the left area now hosts the right's editor");
-    assert_eq!(shell.screen.area(right).unwrap().editor, 0);
+    assert_eq!(shell.screen.area(0).unwrap().editor(), 1, "the left area now hosts the right's editor");
+    assert_eq!(shell.screen.area(right).unwrap().editor(), 0);
     assert_eq!(shell.screen.active, Some(right));
     // A plain click on the grip (no movement) swaps nothing.
     h.advance(1.0);
     press_release(&mut h, &mut shell, &mut host, grip.center());
-    assert_eq!(shell.screen.area(0).unwrap().editor, 1);
+    assert_eq!(shell.screen.area(0).unwrap().editor(), 1);
+}
+
+#[test]
+fn tabs_stack_editors_in_one_area() {
+    let mut h = Harness::new(1000.0, 700.0);
+    let mut shell: Shell<Tiny> = Shell::new(0);
+    let mut host = Tiny::default();
+    h.shell_frame(&mut shell, &mut host);
+    let header = WidgetId::ROOT.with_u64(0).with("header");
+    assert!(h.rect_of(header.with("tab").with_index(0)).is_none(), "one tab: no strip");
+    // `+` lists the editors; picking one opens it in a new tab.
+    let plus = h.rect_of(header.with("+")).expect("the + button");
+    press_release(&mut h, &mut shell, &mut host, plus.center());
+    let other = h.rect_of(header.with("+").with("item").with_index(1)).expect("the editor list");
+    press_release(&mut h, &mut shell, &mut host, other.center());
+    let area = shell.screen.area(0).unwrap();
+    assert_eq!(area.tabs.len(), 2);
+    assert_eq!(area.editor(), 1, "the new tab shows");
+    assert_eq!(shell.layout_description(&host), "[Main|Other*]");
+    // The strip appeared; clicking the first tab shows it again.
+    let first = h.rect_of(header.with("tab").with_index(0)).expect("the strip");
+    press_release(&mut h, &mut shell, &mut host, first.center());
+    assert_eq!(shell.screen.area(0).unwrap().editor(), 0);
+    // Ctrl+Tab cycles (through the host's key), and the ⋮ menu closes a tab.
+    h.key_with(Key::Tab, Modifiers::CTRL);
+    h.shell_settle(&mut shell, &mut host, 3);
+    assert_eq!(shell.screen.area(0).unwrap().editor(), 1);
+    let menu = h.rect_of(header.with("⋮")).unwrap();
+    press_release(&mut h, &mut shell, &mut host, menu.center());
+    let close_tab = h.rect_of(header.with("⋮").with("item").with_index(3)).expect("Close Tab row");
+    press_release(&mut h, &mut shell, &mut host, close_tab.center());
+    let area = shell.screen.area(0).unwrap();
+    assert_eq!(area.tabs.len(), 1);
+    assert_eq!(area.editor(), 0, "the other tab remains");
+    assert_eq!(shell.layout_description(&host), "[Main]");
 }

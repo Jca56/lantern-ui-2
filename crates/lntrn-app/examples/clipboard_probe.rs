@@ -29,8 +29,9 @@ struct Probe {
     started: Instant,
     stage: u8,
     picture: bool,
-    /// The picture leg finished (well or not).
+    /// The picture leg finished, and whether it came back right.
     picture_done: Arc<AtomicBool>,
+    picture_ok: Arc<AtomicBool>,
 }
 
 /// `wl-paste` of `mime`, given five seconds.
@@ -65,14 +66,17 @@ impl Host for Probe {
                 }
                 ui.state.set_clipboard_image(img);
                 let done = Arc::clone(&self.picture_done);
+                let good = Arc::clone(&self.picture_ok);
                 std::thread::spawn(move || {
                     let (bytes, secs) = paste("image/png");
                     let png = bytes.starts_with(&[0x89, b'P', b'N', b'G']);
                     let back = lntrn_image::decode(&bytes).ok();
                     let ok = png && back.as_ref().is_some_and(|b| b.width == 64 && b.height == 48 && b.pixel(3, 0) == [12, 0, 0, 255]);
                     println!("picture paste: {} bytes, png {png}, decodes {} in {secs:.2}s: {}", bytes.len(), back.is_some(), if ok { "OK" } else { "WRONG" });
+                    // The main thread exits, between frames: a thread doing it
+                    // mid-frame stalls in the driver's exit hooks.
+                    good.store(ok, Ordering::SeqCst);
                     done.store(true, Ordering::SeqCst);
-                    std::process::exit(if ok { 0 } else { 1 });
                 });
                 self.stage = 3;
             }
@@ -95,7 +99,10 @@ impl Host for Probe {
             0 => ui.state.request_redraw_after(0.05),
             // The picture leg is waiting on wl-paste; give it ten seconds.
             3 => {
-                if t > 10.0 && !self.picture_done.load(Ordering::SeqCst) {
+                if self.picture_done.load(Ordering::SeqCst) {
+                    std::process::exit(if self.picture_ok.load(Ordering::SeqCst) { 0 } else { 1 });
+                }
+                if t > 10.0 {
                     println!("picture paste: no answer");
                     std::process::exit(2);
                 }
@@ -113,7 +120,7 @@ impl AppHost for Probe {}
 
 fn main() {
     let picture = std::env::args().nth(1).as_deref() == Some("picture");
-    let probe = Probe { started: Instant::now(), stage: 0, picture, picture_done: Arc::new(AtomicBool::new(false)) };
+    let probe = Probe { started: Instant::now(), stage: 0, picture, picture_done: Arc::new(AtomicBool::new(false)), picture_ok: Arc::new(AtomicBool::new(false)) };
     let config = AppConfig { title: "Lantern clipboard probe".into(), app_id: "lntrn-clipboard-probe".into(), size: (420.0, 200.0), maximized: false, persist: false, ..AppConfig::default() };
     run(config, probe, Shell::new(0));
 }

@@ -58,6 +58,9 @@ pub mod actions {
     pub const CLOSE_POPUP: &str = "shell.close_popup";
     /// Give the focused area the whole window, or put the layout back.
     pub const MAXIMIZE: &str = "shell.maximize";
+    /// Show the next (or previous) tab of the focused area.
+    pub const NEXT_TAB: &str = "shell.next_tab";
+    pub const PREV_TAB: &str = "shell.prev_tab";
     pub const QUIT: &str = "shell.quit";
 }
 
@@ -218,6 +221,8 @@ pub enum ShellRequest {
     Toast(String),
     /// Toggle one area (the focused one when `None`) taking the whole window.
     Maximize(Option<AreaId>),
+    /// Show the tab `by` places along (wrapping) in the focused area.
+    CycleTab(i32),
     ClosePopup,
     /// Flip a boolean shell preference by field name.
     PrefToggle(String),

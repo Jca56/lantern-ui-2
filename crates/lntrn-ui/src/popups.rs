@@ -45,6 +45,8 @@ pub(crate) fn dispatch<H: Host>(host: &mut H, action: &Action, cx: &mut HostCx) 
         actions::PREF_TOGGLE => cx.request(ShellRequest::PrefToggle(str_arg("field"))),
         actions::CLOSE_POPUP => cx.request(ShellRequest::ClosePopup),
         actions::MAXIMIZE => cx.request(ShellRequest::Maximize(None)),
+        actions::NEXT_TAB => cx.request(ShellRequest::CycleTab(1)),
+        actions::PREV_TAB => cx.request(ShellRequest::CycleTab(-1)),
         actions::QUIT => cx.request(ShellRequest::Quit),
         _ => host.run(action, cx),
     }

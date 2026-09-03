@@ -17,6 +17,7 @@
 //! and context menus produce. [`Shell::frame`] does the rest. `lntrn-app`
 //! wraps that in a window; `lntrn-demo` is a small complete host.
 
+mod area_header;
 pub mod context_menu;
 pub mod debug_overlay;
 pub mod event;

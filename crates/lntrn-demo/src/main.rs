@@ -34,7 +34,7 @@ const EDITORS: [Editor; 5] = [Editor::Gallery, Editor::Preferences, Editor::Note
 const PICTURES_TAB: usize = 6;
 
 /// Palette entries: (action id, label).
-const PALETTE: [(&str, &str); 11] = [
+const PALETTE: [(&str, &str); 12] = [
     ("demo.open", "Open File…"),
     ("demo.open_image", "Open Picture…"),
     ("demo.save_as", "Save As…"),
@@ -44,6 +44,7 @@ const PALETTE: [(&str, &str); 11] = [
     ("demo.redo", "Redo"),
     ("demo.about", "About"),
     (actions::MAXIMIZE, "Maximize Area"),
+    (actions::NEXT_TAB, "Next Tab"),
     (actions::PALETTE, "Command Palette"),
     (actions::QUIT, "Quit"),
 ];
@@ -114,6 +115,8 @@ impl Demo {
         keys.bind(CTX_WINDOW, KeyItem::new(Trigger::key(Char('f'), ctrl), actions::MENU).with("menu", Value::Str("file".into())));
         keys.bind(CTX_WINDOW, KeyItem::new(Trigger::key(Char('z'), ctrl), "demo.undo"));
         keys.bind(CTX_WINDOW, KeyItem::new(Trigger::key(Char('z'), ctrl | shift), "demo.redo"));
+        keys.bind(CTX_WINDOW, KeyItem::new(Trigger::key(Tab, ctrl), actions::NEXT_TAB));
+        keys.bind(CTX_WINDOW, KeyItem::new(Trigger::key(Tab, ctrl | shift), actions::PREV_TAB));
         Self {
             gallery: GalleryState::default(),
             pending_image: None,
@@ -123,7 +126,7 @@ impl Demo {
             notes_name: "Notes".to_owned(),
             rename: String::new(),
             notes: "Right-click the gallery for a context menu. F3 opens the palette. Tab walks the widgets. Drop a file on the window to open it.".to_owned(),
-            status: "Ctrl+F: File · F3: palette · Ctrl+Space: maximize · Ctrl+Q: quit".to_owned(),
+            status: "Ctrl+F: File · F3: palette · Ctrl+Space: maximize · Ctrl+Tab: next tab · Ctrl+Q: quit".to_owned(),
         }
     }
 
@@ -255,6 +258,7 @@ impl Host for Demo {
                 vec![
                     MenuItem::new("Command Palette", Action::new(actions::PALETTE)),
                     MenuItem::new("Maximize Area", Action::new(actions::MAXIMIZE)),
+                    MenuItem::new("Next Tab", Action::new(actions::NEXT_TAB)),
                     MenuItem::sub("Gallery Tab", TABS.iter().enumerate().map(|(i, name)| MenuItem::new(name, Action::new("demo.tab").with("tab", Value::I64(i as i64))).checked(self.gallery.tab == i)).collect()),
                     MenuItem::separator(),
                     MenuItem::pref_toggle("Focus Follows Mouse", "focus_follows_mouse"),

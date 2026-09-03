@@ -29,7 +29,8 @@ cargo run -p lntrn-demo
 ```
 
 Split and join areas from the `⋮` menu in any header, drag the gaps, drag
-a header onto another area to swap them, Ctrl+Space to maximize one.
+a header onto another area to swap them, Ctrl+Space to maximize one, `+`
+in a header to stack another editor in it as a tab (Ctrl+Tab cycles).
 Right-click the gallery, press F3 for the palette, Tab through everything,
 edit the theme live in Preferences (it is saved for next time), rebind
 keys in Key Bindings, open a picture from the File menu or drop one on
@@ -49,7 +50,8 @@ them.
   meters, waveforms, a curve editor, progress bars, collapsing sections,
   columns, pictures, props-driven panels, a keymap editor.
 - **Shell**: title bar with menus (rules, greyed rows, submenus, key
-  hints, keyboard navigation), resizable and swappable areas, maximize,
+  hints, keyboard navigation), resizable and swappable areas that stack
+  editors as tabs, maximize,
   command palette, file browser, modal dialogs (with the host's own
   widgets inside when it wants them), toasts, context menus with
   tool strips, keyboard focus with rings and scroll-into-view, the system

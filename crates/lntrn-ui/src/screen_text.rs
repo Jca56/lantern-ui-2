@@ -1,12 +1,14 @@
-//! The area tree as text, for saving between runs: a leaf is `[name]`, a
-//! split is `(h ratio first second)` or `(v ...)`.
+//! The area tree as text, for saving between runs: a leaf is `[name]`
+//! (or `[name|name*|name]` with tabs, the showing one starred), a split is
+//! `(h ratio first second)` or `(v ...)`.
 
-use crate::screen::{Area, Axis, Node, NodeId, Screen};
+use crate::screen::{Area, Axis, Node, NodeId, Screen, Tab};
 
 impl<E: Copy + PartialEq, S: Default> Screen<E, S> {
-    /// The tree as one line of text, for saving: a leaf is `[name]`, a
-    /// split is `(h ratio first second)` or `(v ...)`; `name` comes from
-    /// `name(editor)` with any `]` dropped.
+    /// The tree as one line of text, for saving: a leaf is `[name]`, or
+    /// `[name|name*]` with tabs (the showing one starred); a split is
+    /// `(h ratio first second)` or `(v ...)`. `name` comes from
+    /// `name(editor)` with the brackets, `|` and `*` dropped.
     pub fn describe(&self, name: impl Fn(E) -> String) -> String {
         let mut out = String::new();
         self.describe_node(self.root, &name, &mut out);
@@ -16,9 +18,18 @@ impl<E: Copy + PartialEq, S: Default> Screen<E, S> {
     fn describe_node(&self, node: NodeId, name: &dyn Fn(E) -> String, out: &mut String) {
         match &self.nodes[node] {
             Some(Node::Leaf(area)) => {
-                let n = self.area(*area).map(|a| name(a.editor)).unwrap_or_default();
                 out.push('[');
-                out.extend(n.chars().filter(|&c| c != ']' && c != '['));
+                if let Some(a) = self.area(*area) {
+                    for (i, tab) in a.tabs.iter().enumerate() {
+                        if i > 0 {
+                            out.push('|');
+                        }
+                        out.extend(name(tab.editor).chars().filter(|c| !"[]|*".contains(*c)));
+                        if a.tabs.len() > 1 && i == a.current {
+                            out.push('*');
+                        }
+                    }
+                }
                 out.push(']');
             }
             Some(Node::Split { axis, ratio, children }) => {
@@ -52,15 +63,29 @@ impl<E: Copy + PartialEq, S: Default> Screen<E, S> {
         skip_ws(chars);
         match chars.next()? {
             '[' => {
-                let mut name = String::new();
+                let mut inside = String::new();
                 loop {
                     match chars.next()? {
                         ']' => break,
-                        c => name.push(c),
+                        c => inside.push(c),
                     }
                 }
-                let e = editor(&name)?;
-                let area = self.alloc_area(Area { editor: e, state: S::default() });
+                let mut tabs = Vec::new();
+                let mut current = 0;
+                for part in inside.split('|') {
+                    let (name, shown) = match part.strip_suffix('*') {
+                        Some(n) => (n, true),
+                        None => (part, false),
+                    };
+                    if shown {
+                        current = tabs.len();
+                    }
+                    tabs.push(Tab { editor: editor(name)?, state: S::default() });
+                }
+                if tabs.is_empty() {
+                    return None;
+                }
+                let area = self.alloc_area(Area { tabs, current });
                 Some(self.alloc_node(Node::Leaf(area)))
             }
             '(' => {
@@ -145,5 +170,30 @@ mod tests {
         assert!(bad("[Prefs] extra").is_none());
         assert!(bad("").is_none());
         assert!(bad("[Prefs]").is_some());
+    }
+
+    #[test]
+    fn tabs_survive_the_round_trip() {
+        let mut s: Screen<K> = Screen::new(K::Gallery);
+        s.add_tab(0, K::Prefs);
+        s.add_tab(0, K::Empty);
+        s.select_tab(0, 1);
+        let name = |k: K| format!("{k:?}");
+        let text = s.describe(name);
+        assert_eq!(text, "[Gallery|Prefs*|Empty]");
+        let back: Screen<K> = Screen::from_description(&text, |n| match n {
+            "Gallery" => Some(K::Gallery),
+            "Prefs" => Some(K::Prefs),
+            "Empty" => Some(K::Empty),
+            _ => None,
+        })
+        .unwrap();
+        assert_eq!(back.area(0).unwrap().tabs.len(), 3);
+        assert_eq!(back.area(0).unwrap().current, 1);
+        assert_eq!(back.describe(name), text);
+        // An old one-tab layout still reads, and a tab list without a star shows the first.
+        let old: Screen<K> = Screen::from_description("[Prefs|Gallery]", |n| (n == "Prefs").then_some(K::Prefs).or((n == "Gallery").then_some(K::Gallery))).unwrap();
+        assert_eq!(old.area(0).unwrap().current, 0);
+        assert_eq!(old.area(0).unwrap().tabs.len(), 2);
     }
 }

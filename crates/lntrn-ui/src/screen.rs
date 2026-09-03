@@ -1,6 +1,7 @@
 //! The retained layout: a binary tree of splits whose leaves are areas. Each
-//! area hosts one editor and has a header and a body. Changes only when the
-//! user splits, joins or drags a separator.
+//! area holds a stack of tabs, one editor each, and shows one of them under
+//! its header. Changes only when the user splits, joins or drags a
+//! separator, or adds, closes or switches a tab.
 //!
 //! Generic over the host's editor kind `E` and per-area state `S`
 //! (see [`crate::Host`]); the shell fills them in. Saving and restoring
@@ -25,11 +26,47 @@ pub(crate) enum Node {
     Leaf(AreaId),
 }
 
+/// One editor in an area, with the host's state for it (a camera, a
+/// scroll position).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Tab<E, S> {
+    pub editor: E,
+    pub state: S,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Area<E, S> {
-    pub editor: E,
-    /// The host's state for this area (a camera, a scroll position).
-    pub state: S,
+    /// The editors stacked here, one shown at a time. Never empty.
+    pub tabs: Vec<Tab<E, S>>,
+    /// Which tab shows.
+    pub current: usize,
+}
+
+impl<E: Copy, S: Default> Area<E, S> {
+    pub fn new(editor: E) -> Self {
+        Self { tabs: vec![Tab { editor, state: S::default() }], current: 0 }
+    }
+
+    /// The editor of the tab that shows.
+    pub fn editor(&self) -> E {
+        self.tabs[self.current.min(self.tabs.len() - 1)].editor
+    }
+
+    /// Change what the showing tab hosts.
+    pub fn set_editor(&mut self, editor: E) {
+        let i = self.current.min(self.tabs.len() - 1);
+        self.tabs[i].editor = editor;
+    }
+
+    /// The showing tab's state.
+    pub fn state(&self) -> &S {
+        &self.tabs[self.current.min(self.tabs.len() - 1)].state
+    }
+
+    pub fn state_mut(&mut self) -> &mut S {
+        let i = self.current.min(self.tabs.len() - 1);
+        &mut self.tabs[i].state
+    }
 }
 
 /// Where an area landed this frame.
@@ -74,7 +111,7 @@ impl<E: Copy + PartialEq, S: Default> Screen<E, S> {
     pub fn new(editor: E) -> Self {
         Self {
             nodes: vec![Some(Node::Leaf(0))],
-            areas: vec![Some(Area { editor, state: S::default() })],
+            areas: vec![Some(Area::new(editor))],
             root: 0,
             active: Some(0),
             maximized: None,
@@ -103,13 +140,13 @@ impl<E: Copy + PartialEq, S: Default> Screen<E, S> {
 
     /// The editor of the focused area.
     pub fn active_editor(&self) -> Option<E> {
-        self.active.and_then(|a| self.area(a)).map(|a| a.editor)
+        self.active.and_then(|a| self.area(a)).map(|a| a.editor())
     }
 
     /// The focused area if it hosts `editor`, else the first area on screen
     /// that does.
     pub fn target(&self, editor: E) -> Option<AreaId> {
-        let is = |a: AreaId| self.area(a).is_some_and(|ar| ar.editor == editor);
+        let is = |a: AreaId| self.area(a).is_some_and(|ar| ar.editor() == editor);
         self.active.filter(|&a| is(a)).or_else(|| self.layouts.iter().map(|l| l.area).find(|&a| is(a)))
     }
 
@@ -145,7 +182,7 @@ impl<E: Copy + PartialEq, S: Default> Screen<E, S> {
     /// of the space; the new area (with `editor`) takes the rest.
     pub fn split(&mut self, area: AreaId, axis: Axis, ratio: f64, editor: E) -> Option<AreaId> {
         let leaf = self.leaf_of(area)?;
-        let new_area = self.alloc_area(Area { editor, state: S::default() });
+        let new_area = self.alloc_area(Area::new(editor));
         let first = self.alloc_node(Node::Leaf(area));
         let second = self.alloc_node(Node::Leaf(new_area));
         self.nodes[leaf] = Some(Node::Split { axis, ratio: ratio.clamp(0.1, 0.9), children: [first, second] });
@@ -178,7 +215,44 @@ impl<E: Copy + PartialEq, S: Default> Screen<E, S> {
         true
     }
 
-    /// Exchange what two areas hold (editor and state); the tree stays.
+    /// Add a tab hosting `editor` to `area` and show it. Returns its index.
+    pub fn add_tab(&mut self, area: AreaId, editor: E) -> Option<usize> {
+        let a = self.area_mut(area)?;
+        a.tabs.push(Tab { editor, state: S::default() });
+        a.current = a.tabs.len() - 1;
+        Some(a.current)
+    }
+
+    /// Close the showing tab of `area`; the one before it shows. The last
+    /// tab cannot be closed (close the area instead).
+    pub fn close_tab(&mut self, area: AreaId) -> bool {
+        let Some(a) = self.area_mut(area) else {
+            return false;
+        };
+        if a.tabs.len() < 2 {
+            return false;
+        }
+        let i = a.current.min(a.tabs.len() - 1);
+        a.tabs.remove(i);
+        a.current = i.min(a.tabs.len() - 1);
+        true
+    }
+
+    pub fn select_tab(&mut self, area: AreaId, tab: usize) {
+        if let Some(a) = self.area_mut(area) {
+            a.current = tab.min(a.tabs.len() - 1);
+        }
+    }
+
+    /// Show the tab `by` places along (wrapping) in `area`.
+    pub fn cycle_tab(&mut self, area: AreaId, by: i32) {
+        if let Some(a) = self.area_mut(area) {
+            let n = a.tabs.len() as i64;
+            a.current = ((a.current as i64 + i64::from(by)).rem_euclid(n)) as usize;
+        }
+    }
+
+    /// Exchange what two areas hold (their tabs); the tree stays.
     pub fn swap(&mut self, a: AreaId, b: AreaId) -> bool {
         if a == b || self.area(a).is_none() || self.area(b).is_none() {
             return false;
@@ -305,101 +379,4 @@ impl<E: Copy + PartialEq, S: Default> Screen<E, S> {
         header_h * MIN_AREA_HEADERS
     }
 
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    enum K {
-        Empty,
-        Prefs,
-        Gallery,
-    }
-
-    fn win() -> Rect {
-        Rect::from_xywh(0.0, 0.0, 1000.0, 600.0)
-    }
-
-    #[test]
-    fn single_area_fills_window() {
-        let mut s: Screen<K> = Screen::new(K::Empty);
-        s.layout(win(), 45.0, 5.0);
-        assert_eq!(s.layouts().len(), 1);
-        let l = s.layouts()[0];
-        assert_eq!(l.rect, win());
-        assert_eq!(l.header.height(), 45.0);
-        assert_eq!(l.body.min.y, 45.0);
-        assert!(s.separators().is_empty());
-        assert!(!s.join(0), "cannot remove the last area");
-        assert_eq!(s.active_editor(), Some(K::Empty));
-    }
-
-    #[test]
-    fn split_join_and_drag() {
-        let mut s: Screen<K, u32> = Screen::new(K::Empty);
-        let right = s.split(0, Axis::Horizontal, 0.6, K::Prefs).unwrap();
-        assert_eq!(s.area_count(), 2);
-        s.area_mut(right).unwrap().state = 7;
-        s.layout(win(), 45.0, 10.0);
-        let l0 = *s.layout_of(0).unwrap();
-        let l1 = *s.layout_of(right).unwrap();
-        assert_eq!(l0.rect.width(), 594.0, "60% of (1000 - gap)");
-        assert_eq!(l1.rect.min.x, 604.0);
-        assert_eq!(l1.rect.max.x, 1000.0);
-        assert_eq!(s.separators().len(), 1);
-        assert_eq!(s.separators()[0].gap, Rect::from_xywh(594.0, 0.0, 10.0, 600.0));
-        assert_eq!(s.area_at(Vec2::new(700.0, 10.0)), Some(right));
-        assert_eq!(s.separator_at(Vec2::new(598.0, 300.0)), Some(0));
-        assert_eq!(s.separator_at(Vec2::new(100.0, 300.0)), None);
-        assert_eq!(s.target(K::Prefs), Some(right), "the first area hosting the editor");
-        assert_eq!(s.target(K::Gallery), None);
-
-        s.drag_separator(0, Vec2::new(300.0, 0.0), 90.0);
-        s.layout(win(), 45.0, 10.0);
-        assert!((s.layout_of(0).unwrap().rect.width() - 297.0).abs() <= 1.0);
-        // Clamped to the minimum.
-        s.drag_separator(0, Vec2::new(0.0, 0.0), 90.0);
-        s.layout(win(), 45.0, 10.0);
-        assert!(s.layout_of(0).unwrap().rect.width() >= 80.0);
-
-        // Nested split of the right area, then join it away again.
-        let bottom = s.split(right, Axis::Vertical, 0.5, K::Gallery).unwrap();
-        assert_eq!(s.area(bottom).unwrap().state, 0, "a new area starts with default state");
-        assert_eq!(s.area(right).unwrap().state, 7, "the split area keeps its state");
-        s.layout(win(), 45.0, 10.0);
-        assert_eq!(s.layouts().len(), 3);
-        assert_eq!(s.separators().len(), 2);
-        s.active = Some(bottom);
-        assert!(s.join(bottom));
-        assert_eq!(s.area_count(), 2);
-        assert_ne!(s.active, Some(bottom));
-        assert_eq!(s.area_ids().collect::<Vec<_>>(), vec![0, right]);
-        s.layout(win(), 45.0, 10.0);
-        assert_eq!(s.layouts().len(), 2);
-        // Maximize hides the tree without changing it.
-        s.toggle_maximize(right);
-        s.layout(win(), 45.0, 10.0);
-        assert_eq!(s.layouts().len(), 1);
-        assert_eq!(s.layouts()[0].rect, win());
-        assert_eq!(s.layouts()[0].area, right);
-        assert!(s.separators().is_empty());
-        assert_eq!(s.active, Some(right));
-        s.toggle_maximize(right);
-        s.layout(win(), 45.0, 10.0);
-        assert_eq!(s.layouts().len(), 2, "restored");
-        assert!(s.swap(0, right));
-        assert_eq!(s.area(0).unwrap().editor, K::Prefs);
-        assert_eq!(s.area(0).unwrap().state, 7, "state travels with the editor");
-        assert_eq!(s.area(right).unwrap().editor, K::Empty);
-        assert!(!s.swap(0, 0) && !s.swap(0, 99));
-        assert!(s.swap(right, 0));
-        s.toggle_maximize(right);
-        assert!(s.join(right), "joining the maximized area away clears it");
-        assert_eq!(s.maximized, None);
-        s.layout(win(), 45.0, 10.0);
-        assert_eq!(s.layouts()[0].rect, win(), "sibling took the whole window back");
-        assert!(s.separators().is_empty());
-    }
 }
