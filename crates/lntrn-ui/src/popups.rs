@@ -9,7 +9,7 @@ use lntrn_props::Value;
 use crate::context_menu::{self, ContextMenu};
 use crate::event::Key;
 use crate::file_browser::{self, FileBrowser, Verdict};
-use crate::host::{Action, Host, HostCx, MenuItem, ShellRequest, actions};
+use crate::host::{Action, Dialog, Host, HostCx, MenuItem, ShellRequest, actions};
 use crate::state::CursorIcon;
 use crate::ui::{FILL, Sense, Ui};
 
@@ -20,6 +20,7 @@ pub enum Popup {
     /// A file browser that runs `action` with the chosen `path`.
     Path { action: Action, browser: FileBrowser },
     Context(Box<ContextMenu>),
+    Dialog(Dialog),
 }
 
 /// What the shell does after a popup frame.
@@ -42,6 +43,7 @@ pub(crate) fn dispatch<H: Host>(host: &mut H, action: &Action, cx: &mut HostCx) 
         actions::PALETTE => cx.request(ShellRequest::Palette),
         actions::PREF_TOGGLE => cx.request(ShellRequest::PrefToggle(str_arg("field"))),
         actions::CLOSE_POPUP => cx.request(ShellRequest::ClosePopup),
+        actions::MAXIMIZE => cx.request(ShellRequest::Maximize(None)),
         actions::QUIT => cx.request(ShellRequest::Quit),
         _ => host.run(action, cx),
     }
@@ -77,13 +79,26 @@ pub(crate) fn draw<H: Host>(ui: &mut Ui, popup: &mut Popup, window: Rect, palett
             let h = m.px(760.0).min(window.height() - m.pad * 2.0);
             Rect::from_min_size((window.center() - Vec2::new(w, h) * 0.5).round(), Vec2::new(w, h))
         }
+        Popup::Dialog(d) => {
+            let w = m.px(700.0).min(window.width() - m.pad * 2.0);
+            let style = ui.text_style();
+            let body_h = ui.text.measure_wrapped(&d.body, &style, (w - m.gap * 2.0 - m.pad * 2.0) as f32).height as f64;
+            let heading_h = ui.heading_style().line_height() as f64 + m.gap;
+            let h = m.gap * 2.0 + m.pad * 2.0 + heading_h + m.gap + body_h + m.gap * 2.0 + m.widget_h;
+            Rect::from_min_size((window.center() - Vec2::new(w, h) * 0.5).round(), Vec2::new(w, h))
+        }
         Popup::Context(_) => unreachable!(),
     };
     ui.state.keep_popup(rect, layer);
     if ui.state.pressed && !rect.contains(ui.state.press_pos) {
-        out.close = true;
-        if !matches!(popup, Popup::Menu { .. }) {
+        if matches!(popup, Popup::Dialog(_)) {
+            // Modal: the press goes nowhere and the dialog stays.
             ui.state.press_claimed = true;
+        } else {
+            out.close = true;
+            if !matches!(popup, Popup::Menu { .. }) {
+                ui.state.press_claimed = true;
+            }
         }
     }
 
@@ -174,6 +189,36 @@ pub(crate) fn draw<H: Host>(ui: &mut Ui, popup: &mut Popup, window: Rect, palett
             Verdict::Cancel => out.close = true,
             Verdict::Open => {}
         },
+        Popup::Dialog(d) => {
+            let inner = content.shrink(m.pad);
+            ui.set_cursor(inner.min);
+            ui.set_avail_width(inner.width());
+            ui.heading(&d.title);
+            ui.paragraph(&d.body);
+            ui.space(m.gap);
+            let enter = ui.state.take_key(|k| k.key == Key::Enter && k.mods.is_empty()).is_some();
+            let style = ui.text_style();
+            let widths: Vec<f64> = d.buttons.iter().map(|(l, _)| ui.measure(l, &style) + m.pad * 2.0).collect();
+            let total: f64 = widths.iter().sum::<f64>() + m.gap * (widths.len().saturating_sub(1)) as f64;
+            let spacer = (inner.width() - total).max(0.0);
+            let mut pressed = None;
+            ui.row(|ui| {
+                ui.alloc(Vec2::new(spacer, 1.0));
+                for (i, (label, _)) in d.buttons.iter().enumerate() {
+                    ui.push_index(i);
+                    if ui.button(label).clicked || (enter && i == d.default) {
+                        pressed = Some(i);
+                    }
+                    ui.pop_id();
+                }
+            });
+            if let Some(i) = pressed {
+                if let Some(action) = d.buttons.get(i).and_then(|(_, a)| a.clone()) {
+                    dispatch(host, &action, cx);
+                }
+                out.close = true;
+            }
+        }
         Popup::Context(_) => unreachable!(),
     }
 

@@ -10,7 +10,7 @@ use lntrn_app::{AppConfig, AppHost, run};
 use lntrn_props::{Reflect, Value, props};
 use lntrn_ui::gallery::{self, GalleryState};
 use lntrn_ui::keymap::CTX_WINDOW;
-use lntrn_ui::{Action, AreaCx, Axis, ContextMenu, Host, HostCx, Icon, Item, Key, KeyConfig, KeyItem, KeyPress, Menu, MenuItem, Modifiers, Shell, ShellRequest, Tool, Trigger, Ui, actions, prefs};
+use lntrn_ui::{Action, AreaCx, Axis, ContextMenu, Dialog, Host, HostCx, Icon, Item, Key, KeyConfig, KeyItem, KeyPress, Menu, MenuItem, Modifiers, Shell, ShellRequest, Tool, Trigger, Ui, actions, prefs};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Editor {
@@ -23,11 +23,12 @@ enum Editor {
 const EDITORS: [Editor; 4] = [Editor::Gallery, Editor::Preferences, Editor::Notes, Editor::Empty];
 
 /// Palette entries: (action id, label).
-const PALETTE: [(&str, &str); 6] = [
+const PALETTE: [(&str, &str); 7] = [
     ("demo.open", "Open File…"),
     ("demo.save_as", "Save As…"),
     ("demo.reset", "Reset Gallery"),
     ("demo.about", "About"),
+    (actions::MAXIMIZE, "Maximize Area"),
     (actions::PALETTE, "Command Palette"),
     (actions::QUIT, "Quit"),
 ];
@@ -45,6 +46,8 @@ struct Demo {
     keys: KeyConfig,
     notes: String,
     status: String,
+    /// Mirror of the shell preference, for the Help menu's check mark.
+    ffm: bool,
 }
 
 impl Demo {
@@ -56,16 +59,17 @@ impl Demo {
         let mut keys = KeyConfig::default();
         keys.bind(CTX_WINDOW, KeyItem::new(Trigger::key(Char('q'), ctrl), actions::QUIT));
         keys.bind(CTX_WINDOW, KeyItem::new(Trigger::key(F(3), none), actions::PALETTE));
-        keys.bind(CTX_WINDOW, KeyItem::new(Trigger::key(Space, ctrl), actions::PALETTE));
+        keys.bind(CTX_WINDOW, KeyItem::new(Trigger::key(Space, ctrl), actions::MAXIMIZE));
         keys.bind(CTX_WINDOW, KeyItem::new(Trigger::key(Char('o'), ctrl), "demo.open"));
         keys.bind(CTX_WINDOW, KeyItem::new(Trigger::key(Char('s'), ctrl | shift), "demo.save_as"));
         keys.bind(CTX_WINDOW, KeyItem::new(Trigger::key(Char('r'), ctrl), "demo.reset"));
         keys.bind(CTX_WINDOW, KeyItem::new(Trigger::key(Char('f'), ctrl), actions::MENU).with("menu", Value::Str("file".into())));
         Self {
             gallery: GalleryState::default(),
+            ffm: false,
             keys,
-            notes: "Right-click the gallery for a context menu. F3 opens the palette.".to_owned(),
-            status: "Ctrl+F: File · F3: palette · Ctrl+Q: quit".to_owned(),
+            notes: "Right-click the gallery for a context menu. F3 opens the palette. Tab walks the widgets.".to_owned(),
+            status: "Ctrl+F: File · F3: palette · Ctrl+Space: maximize · Ctrl+Q: quit".to_owned(),
         }
     }
 
@@ -132,11 +136,19 @@ impl Host for Demo {
                 vec![
                     MenuItem::new("Open…", Action::new("demo.open")),
                     MenuItem::new("Save As…", Action::new("demo.save_as")),
-                    MenuItem::new("Reset Gallery", Action::new("demo.reset")),
+                    MenuItem::new("Reset Gallery…", Action::new("demo.reset_ask")),
                     MenuItem::new("Quit", Action::new(actions::QUIT)),
                 ],
             ),
-            "help" => Menu::new("Help", vec![MenuItem::new("Command Palette", Action::new(actions::PALETTE)), MenuItem::new("About", Action::new("demo.about"))]),
+            "help" => Menu::new(
+                "Help",
+                vec![
+                    MenuItem::new("Command Palette", Action::new(actions::PALETTE)),
+                    MenuItem::new("Maximize Area", Action::new(actions::MAXIMIZE)),
+                    MenuItem::pref_toggle("Focus Follows Mouse", "focus_follows_mouse", self.ffm),
+                    MenuItem::new("About", Action::new("demo.about")),
+                ],
+            ),
             _ => return None,
         })
     }
@@ -157,7 +169,10 @@ impl Host for Demo {
                 }
                 false
             }
-            Editor::Preferences => prefs::draw(ui, cx.prefs),
+            Editor::Preferences => {
+                self.ffm = cx.prefs.focus_follows_mouse;
+                prefs::draw(ui, cx.prefs)
+            }
             Editor::Notes => {
                 ui.heading("Notes");
                 ui.text_field("notes", &mut self.notes);
@@ -183,22 +198,26 @@ impl Host for Demo {
             "demo.opened" => {
                 self.status = format!("Opened {}", path());
                 self.notes = std::fs::read_to_string(path()).unwrap_or_else(|e| format!("could not read: {e}"));
+                cx.toast(&self.status.clone());
             }
             "demo.save_as" => cx.request(ShellRequest::PathDialog { action: Action::new("demo.saved"), save: true, suggest: home.join("notes.txt").display().to_string() }),
             "demo.saved" => {
                 self.status = match std::fs::write(path(), &self.notes) {
                     Ok(()) => format!("Saved {}", path()),
                     Err(e) => format!("could not save: {e}"),
-                }
+                };
+                cx.toast(&self.status.clone());
             }
+            "demo.reset_ask" => cx.request(ShellRequest::Dialog(Dialog::confirm("Reset the gallery?", "Every knob, toggle and counter goes back to how it started.", "Reset", Action::new("demo.reset")))),
             "demo.reset" => {
                 self.gallery = GalleryState::default();
                 self.status = "Gallery reset".to_owned();
+                cx.toast("Gallery reset");
             }
             "demo.count" => self.gallery.clicks = (self.gallery.clicks as i64 + int("by")).max(0) as u32,
             "demo.tab" => self.gallery.tab = int("tab") as usize,
             "demo.toggle_b" => self.gallery.toggle_b = !self.gallery.toggle_b,
-            "demo.about" => self.status = "Lantern UI 0.2 · fully ours".to_owned(),
+            "demo.about" => cx.request(ShellRequest::Dialog(Dialog::notice("Lantern UI 0.2", "Rust, wgpu and winit. Everything else is ours: math, reflection, text, rendering, widgets."))),
             other => self.status = format!("unknown action {other}"),
         }
         cx.rebuild();

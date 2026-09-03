@@ -61,6 +61,8 @@ pub struct Screen<E, S = ()> {
     root: NodeId,
     /// The area that receives keyboard input (D017).
     pub active: Option<AreaId>,
+    /// An area taking the whole window; the tree underneath is untouched.
+    pub maximized: Option<AreaId>,
     layouts: Vec<AreaLayout>,
     separators: Vec<Separator>,
     node_rects: Vec<Rect>,
@@ -74,6 +76,7 @@ impl<E: Copy + PartialEq, S: Default> Screen<E, S> {
             areas: vec![Some(Area { editor, state: S::default() })],
             root: 0,
             active: Some(0),
+            maximized: None,
             layouts: Vec::new(),
             separators: Vec::new(),
             node_rects: Vec::new(),
@@ -168,7 +171,19 @@ impl<E: Copy + PartialEq, S: Default> Screen<E, S> {
         if self.active == Some(area) {
             self.active = self.areas.iter().position(Option::is_some);
         }
+        if self.maximized == Some(area) {
+            self.maximized = None;
+        }
         true
+    }
+
+    /// Give `area` the whole window, or put the layout back if it has it.
+    pub fn toggle_maximize(&mut self, area: AreaId) {
+        if self.area(area).is_none() {
+            return;
+        }
+        self.maximized = if self.maximized == Some(area) { None } else { Some(area) };
+        self.active = Some(area);
     }
 
     pub fn set_ratio(&mut self, node: NodeId, ratio: f64) {
@@ -183,6 +198,11 @@ impl<E: Copy + PartialEq, S: Default> Screen<E, S> {
         self.separators.clear();
         self.node_rects.clear();
         self.node_rects.resize(self.nodes.len(), Rect::ZERO);
+        if let Some(area) = self.maximized.filter(|&a| self.area(a).is_some()) {
+            let (header, body) = rect.take_top(header_h.min(rect.height()));
+            self.layouts.push(AreaLayout { area, rect, header: header.round(), body: body.round() });
+            return;
+        }
         let root = self.root;
         self.layout_node(root, rect, header_h, sep);
     }
@@ -347,7 +367,20 @@ mod tests {
         assert_eq!(s.area_ids().collect::<Vec<_>>(), vec![0, right]);
         s.layout(win(), 45.0, 10.0);
         assert_eq!(s.layouts().len(), 2);
-        assert!(s.join(right));
+        // Maximize hides the tree without changing it.
+        s.toggle_maximize(right);
+        s.layout(win(), 45.0, 10.0);
+        assert_eq!(s.layouts().len(), 1);
+        assert_eq!(s.layouts()[0].rect, win());
+        assert_eq!(s.layouts()[0].area, right);
+        assert!(s.separators().is_empty());
+        assert_eq!(s.active, Some(right));
+        s.toggle_maximize(right);
+        s.layout(win(), 45.0, 10.0);
+        assert_eq!(s.layouts().len(), 2, "restored");
+        s.toggle_maximize(right);
+        assert!(s.join(right), "joining the maximized area away clears it");
+        assert_eq!(s.maximized, None);
         s.layout(win(), 45.0, 10.0);
         assert_eq!(s.layouts()[0].rect, win(), "sibling took the whole window back");
         assert!(s.separators().is_empty());

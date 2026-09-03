@@ -45,6 +45,7 @@ pub struct WindowState {
 enum AreaAction<E> {
     Split(AreaId, Axis),
     Close(AreaId),
+    Maximize(AreaId),
     SetEditor(AreaId, E),
 }
 
@@ -54,13 +55,14 @@ pub struct Shell<H: Host> {
     pub prefs: Prefs,
     pub(crate) popup: Option<Popup>,
     pub(crate) drag_sep: Option<usize>,
+    pub(crate) toasts: Vec<crate::toasts::Toast>,
 }
 
 impl<H: Host> Shell<H> {
     /// One area hosting `editor`. Split [`Shell::screen`] for a richer
     /// starting layout.
     pub fn new(editor: H::Editor) -> Self {
-        Self { screen: Screen::new(editor), state: UiState::new(), prefs: Prefs::default(), popup: None, drag_sep: None }
+        Self { screen: Screen::new(editor), state: UiState::new(), prefs: Prefs::default(), popup: None, drag_sep: None, toasts: Vec::new() }
     }
 
     /// Metrics for the current preferences at `window_scale`.
@@ -91,6 +93,13 @@ impl<H: Host> Shell<H> {
                 self.popup = Some(Popup::Path { action, browser });
             }
             ShellRequest::ContextMenu(menu) => self.popup = Some(Popup::Context(menu)),
+            ShellRequest::Dialog(d) => self.popup = Some(Popup::Dialog(d)),
+            ShellRequest::Toast(text) => self.toasts.push(crate::toasts::Toast { text, at: self.state.now }),
+            ShellRequest::Maximize(area) => {
+                if let Some(a) = area.or(self.screen.active) {
+                    self.screen.toggle_maximize(a);
+                }
+            }
             ShellRequest::ClosePopup => {
                 self.popup = None;
                 self.state.focus = None;
@@ -214,6 +223,7 @@ impl<H: Host> Shell<H> {
         let labels: Vec<String> = editors.iter().map(|&k| host.editor_label(k).to_owned()).collect();
         let label_refs: Vec<&str> = labels.iter().map(String::as_str).collect();
         let layouts: Vec<_> = self.screen.layouts().to_vec();
+        let maximized = self.screen.maximized;
         let mut actions = Vec::new();
         let mut changed_globals = false;
         for l in &layouts {
@@ -252,10 +262,12 @@ impl<H: Host> Shell<H> {
                 let menu_w = ui.measure("⋮", &style) + ui.m.pad * 2.0;
                 let spacer = (ui.avail_width() - menu_w - ui.m.gap).max(0.0);
                 ui.alloc(Vec2::new(spacer, 1.0));
-                if let Some(i) = ui.menu_button("⋮", &["Split Left | Right", "Split Top | Bottom", "Close Area"]) {
+                let max_label = if maximized == Some(l.area) { "Restore" } else { "Maximize" };
+                if let Some(i) = ui.menu_button("⋮", &[max_label, "Split Left | Right", "Split Top | Bottom", "Close Area"]) {
                     actions.push(match i {
-                        0 => AreaAction::Split(l.area, Axis::Horizontal),
-                        1 => AreaAction::Split(l.area, Axis::Vertical),
+                        0 => AreaAction::Maximize(l.area),
+                        1 => AreaAction::Split(l.area, Axis::Horizontal),
+                        2 => AreaAction::Split(l.area, Axis::Vertical),
                         _ => AreaAction::Close(l.area),
                     });
                 }
@@ -279,6 +291,7 @@ impl<H: Host> Shell<H> {
             draw.stroke_rect(l.rect, m.focus_border, 0.0, theme.focus);
             draw.pop_clip();
         }
+        self.draw_toasts(draw, text, &theme, m, window);
 
         // ---- keys no widget consumed go to the host -----------------------
         if self.popup.is_none() && !captured {
@@ -316,6 +329,7 @@ impl<H: Host> Shell<H> {
                 AreaAction::Close(area) => {
                     self.screen.join(area);
                 }
+                AreaAction::Maximize(area) => self.screen.toggle_maximize(area),
                 AreaAction::SetEditor(area, kind) => {
                     if let Some(a) = self.screen.area_mut(area) {
                         a.editor = kind;

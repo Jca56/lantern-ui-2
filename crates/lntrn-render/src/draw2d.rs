@@ -461,12 +461,12 @@ mod tests {
         d.clear();
         d.arc(Vec2::ZERO, 100.0, 0.0, core::f64::consts::PI, 4.0, Color::WHITE);
         let n = d.vertex_count();
-        assert!(n >= 6 * 50 && n % 6 == 0, "a half circle of radius 100 is many segments: {n}");
+        assert!(n >= 6 * 50 && n.is_multiple_of(6), "a half circle of radius 100 is many segments: {n}");
         let first = d.vertices().next().unwrap().pos;
         assert!((first[0] - 100.0).abs() < 3.0 && first[1].abs() < 3.0, "starts at the right: {first:?}");
         d.clear();
         d.pie(Vec2::ZERO, 10.0, 0.0, 1.0, Color::WHITE);
-        assert!(d.vertex_count() % 3 == 0 && d.vertex_count() >= 9);
+        assert!(d.vertex_count().is_multiple_of(3) && d.vertex_count() >= 9);
         d.clear();
         d.bezier(Vec2::ZERO, Vec2::new(0.0, 100.0), Vec2::new(100.0, 100.0), Vec2::new(100.0, 0.0), 2.0, Color::WHITE);
         let last = d.vertices().last().unwrap().pos;

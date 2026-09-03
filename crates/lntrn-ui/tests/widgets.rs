@@ -40,7 +40,7 @@ fn slider_drags_and_types() {
     let mut f = |ui: &mut Ui| {
         ui.slider("Opacity", &mut v.borrow_mut(), 0.0, 1.0, 0.0);
     };
-    h.frame(&mut f);
+    h.frame(f);
     let r = h.rect_of_label("Opacity").unwrap();
     h.drag(Vec2::new(r.min.x + 1.0, r.center().y), Vec2::new(r.min.x + r.width() * 0.5, r.center().y), 4, &mut f);
     assert!((*v.borrow() - 0.5).abs() < 0.02, "dragged to the middle: {}", v.borrow());
@@ -67,18 +67,18 @@ fn text_field_edits() {
     h.click_on(WidgetId::ROOT.with("name"), &mut f);
     h.key(Key::End);
     h.type_text("cd");
-    h.frame(&mut f);
+    h.frame(f);
     assert_eq!(*s.borrow(), "abcd");
     h.key(Key::Backspace);
     h.key(Key::Home);
     h.type_text("x");
-    h.frame(&mut f);
+    h.frame(f);
     assert_eq!(*s.borrow(), "xabc");
     // Shift+End selects to the end; typing replaces the selection.
     h.key_with(Key::Home, Modifiers::NONE);
     h.key_with(Key::End, Modifiers::SHIFT);
     h.type_text("z");
-    h.frame(&mut f);
+    h.frame(f);
     assert_eq!(*s.borrow(), "z");
 }
 

@@ -54,7 +54,50 @@ pub mod actions {
     pub const PREF_TOGGLE: &str = "shell.pref_toggle";
     /// Close the open popup, if any.
     pub const CLOSE_POPUP: &str = "shell.close_popup";
+    /// Give the focused area the whole window, or put the layout back.
+    pub const MAXIMIZE: &str = "shell.maximize";
     pub const QUIT: &str = "shell.quit";
+}
+
+/// A modal question: a title, a body, and buttons that run actions or
+/// just close. Enter presses the default button; Escape closes; a press
+/// outside is swallowed.
+#[derive(Clone, Debug)]
+pub struct Dialog {
+    pub title: String,
+    pub body: String,
+    /// Buttons left to right: the label, and what it runs (`None` only
+    /// closes the dialog).
+    pub buttons: Vec<(String, Option<Action>)>,
+    /// The button Enter presses.
+    pub default: usize,
+}
+
+impl Dialog {
+    /// A notice with one OK button.
+    pub fn notice(title: &str, body: &str) -> Self {
+        Self { title: title.to_owned(), body: body.to_owned(), buttons: vec![("OK".to_owned(), None)], default: 0 }
+    }
+
+    /// Cancel on the left, `ok` on the right running `action`; Enter confirms.
+    pub fn confirm(title: &str, body: &str, ok: &str, action: Action) -> Self {
+        Self { title: title.to_owned(), body: body.to_owned(), buttons: vec![("Cancel".to_owned(), None), (ok.to_owned(), Some(action))], default: 1 }
+    }
+
+    /// Start with no buttons and add them with [`Dialog::button`].
+    pub fn new(title: &str, body: &str) -> Self {
+        Self { title: title.to_owned(), body: body.to_owned(), buttons: Vec::new(), default: 0 }
+    }
+
+    pub fn button(mut self, label: &str, action: Option<Action>) -> Self {
+        self.buttons.push((label.to_owned(), action));
+        self
+    }
+
+    pub fn default_button(mut self, i: usize) -> Self {
+        self.default = i;
+        self
+    }
 }
 
 /// A row of a named menu.
@@ -112,6 +155,12 @@ pub enum ShellRequest {
     PathDialog { action: Action, save: bool, suggest: String },
     /// Open a context menu at its `pos`.
     ContextMenu(Box<ContextMenu>),
+    /// Ask a modal question.
+    Dialog(Dialog),
+    /// Show a short message in the corner for a few seconds.
+    Toast(String),
+    /// Toggle one area (the focused one when `None`) taking the whole window.
+    Maximize(Option<AreaId>),
     ClosePopup,
     /// Flip a boolean shell preference by field name.
     PrefToggle(String),
@@ -148,6 +197,10 @@ impl HostCx<'_> {
         self.requests.push(ShellRequest::Rebuild);
     }
 
+    pub fn toast(&mut self, text: &str) {
+        self.requests.push(ShellRequest::Toast(text.to_owned()));
+    }
+
     pub fn quit(&mut self) {
         self.requests.push(ShellRequest::Quit);
     }
@@ -175,6 +228,10 @@ impl<S> AreaCx<'_, S> {
 
     pub fn rebuild(&mut self) {
         self.requests.push(ShellRequest::Rebuild);
+    }
+
+    pub fn toast(&mut self, text: &str) {
+        self.requests.push(ShellRequest::Toast(text.to_owned()));
     }
 
     /// The same context without the area, for [`Host::run`].
