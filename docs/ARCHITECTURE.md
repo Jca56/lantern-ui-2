@@ -86,6 +86,32 @@ wheel to widgets and hands the tool every event through `Host::captured`.
 popup closing or a value committing asks for one more (`rebuild_again`);
 the app caps that at four before presenting.
 
+## 3b. Keyboard, time and memory
+
+**Focus** — every clickable widget registers itself as a Tab stop
+(`Ui::focusable`). A Tab nobody consumed moves focus along that order at
+the end of the frame; Enter and Space click the focused widget
+(`Ui::key_click`); arrows step values (`Ui::key_step`); a ring shows only
+after keyboard navigation and disappears on the next pointer press. A
+scroll area brings a newly focused widget into view.
+
+**Time** — `UiState::now` is the frame clock. `Ui::animate` eases a
+per-widget value toward a target and keeps asking for frames
+(`request_redraw_after`) until it rests; the harness sleeps with
+`WaitUntil` in between and is idle otherwise. Toasts and the busy bar use
+the same mechanism.
+
+**Memory** — per-widget state lives in a map keyed by widget id *and*
+kind, so a number field keeps its typing buffer, its drag origin and its
+undo history side by side. Editors replay keys and typed text in arrival
+order (each carries a sequence number), so a fast "hello, Enter, world"
+lands in the right order even inside one frame.
+
+**Persistence** — `Prefs` is a `props!` struct saved as field-id-tagged
+bytes (`persist::save`); the area tree is one line of text
+(`Screen::describe`). `lntrn_app::run` loads both from
+`~/.config/<app_id>/` and writes them back on exit.
+
 ## 4. The frame
 
 ```
@@ -98,11 +124,20 @@ winit event ──► translate ──► Event ──┐
   clear ──► host.render(RenderCx)  ──► Pass2d(draw list, atlas) ──► present
 ```
 
-`Pass2d` draws the whole `DrawList` — panels, strokes, icons and glyph
-quads — in one pass from one vertex stream against the text atlas, with a
-clip stack and layers (0 areas, 1 popups, 2 context-menu content, 3
-tooltips). A 3D host adds its nodes to the render graph between the clear
-and the UI pass; the UI composites over them.
+`Pass2d` draws the whole `DrawList` — panels, strokes, icons, glyph quads
+and pictures — in one pass from one vertex stream against the text atlas,
+with a clip stack and layers (0 areas, 1 popups, 2 context-menu content, 3
+tooltips, 4 toasts). Pictures are `Images` uploaded once (sRGB, with
+mipmaps) and referenced by handle; the pass binds one picture per stretch
+of vertices that needs it, so a frame without pictures is still a single
+draw. A 3D host adds its nodes to the render graph between the clear and
+the UI pass; the UI composites over them.
+
+**Two harnesses** share that frame: `lntrn_app::run` owns a winit window
+(undecorated, the shell draws the frame), and `lntrn_app::Embedded` draws
+into a window somebody else owns — a plugin editor in a DAW — from raw
+window handles, taking events in our own vocabulary and reporting the
+cursor and wake time back.
 
 ## 5. Text
 
@@ -121,7 +156,17 @@ from its description. `Theme::metrics(scale)` turns it into physical
 pixels once per frame; `scale` is the window's scale factor times the
 user's UI scale preference.
 
-## 7. Adding a widget
+## 7. Testing without a window
+
+`lntrn_ui::testing::Harness` holds a text engine, a draw list and a
+`UiState`, records every widget's rect, and runs frames from queued
+synthetic input: `click_on(id, |ui| ...)`, `drag(from, to, ...)`,
+`key(...)`, `type_text(...)`, `advance(seconds)`. Widget ids are the
+label path (`WidgetId::ROOT.with("list").with_index(3).with("Row 3")`).
+`shell_frame` drives a whole `Shell` with a host the same way. Every widget
+and shell feature has a headless test in `crates/lntrn-ui/tests/`.
+
+## 8. Adding a widget
 
 A widget is a method on `Ui` in `lntrn-ui/src/widgets/`: allocate a rect
 (`alloc`), hit-test it (`interact` with a `Sense`), read the `Response`,

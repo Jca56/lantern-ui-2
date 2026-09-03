@@ -129,6 +129,72 @@ not a workspace-level directory, so the crate works as a path dependency
 from any repo. Apps with shaders of their own preprocess them with
 `shader::load_with`, which lets them `#include` the built-in files.
 
+## U005 — A headless harness, and widgets record their rects
+**Status:** Accepted (2026-09-03)
+**Decision:** `UiState::record_rects` makes every `interact` call remember
+its rect; `testing::Harness` runs frames from synthetic events and clicks
+widgets by id. Tests for widgets and the shell are headless integration
+tests under `crates/lntrn-ui/tests/`.
+**Why:** Alva tests the window; the framework must test itself. The
+harness found real bugs the first day (below).
+
+## U006 — Per-widget memory is keyed by (id, kind)
+**Status:** Accepted (2026-09-03)
+**Decision:** The memory map's key is the widget id *and* the kind of
+memory. Before, a number field's typing buffer and drag origin shared one
+slot and clobbered each other every frame, so dragging a value snapped it
+toward zero. Inherited from Prism; caught by the harness.
+
+## U007 — Keyboard focus is a Tab order the widgets build each frame
+**Status:** Accepted (2026-09-03)
+**Decision:** Widgets call `focusable(id, rect)`; the shell moves focus
+along that order on an unconsumed Tab at the end of the frame; Enter and
+Space click, arrows step, rings show only after keyboard use, scroll areas
+scroll to the focused widget. Text fields leave Tab alone.
+**Why:** Accessibility is a requirement (ARCHITECTURE §1). Building the
+order from declaration keeps it right as panels change.
+
+## U008 — Timed redraws, not a render loop
+**Status:** Accepted (2026-09-03)
+**Decision:** A widget that animates asks for a rebuild after a delay
+(`request_redraw_after`); the shell reports the soonest; the harness sleeps
+with `WaitUntil`. `Ui::animate` eases values and settles to silence.
+**Why:** Zero percent idle stays true; hover fades, toasts and busy bars
+still move.
+
+## U009 — Edits replay in arrival order
+**Status:** Accepted (2026-09-03)
+**Decision:** Key presses and committed text each carry a sequence number
+from the frame's event stream; editors take both as one ordered list.
+**Why:** Keys and text were two streams; "hello, Enter, world" typed fast
+enough to land in one frame came out as "\nhelloworld".
+
+## U010 — Preferences as tagged bytes, layout as one line of text
+**Status:** Accepted (2026-09-03)
+**Decision:** `Prefs` saves through `lntrn_props::serial` behind a magic
+prefix; the area tree saves as `(h 0.62 [Gallery] (v 0.6 [Prefs] [Notes]))`
+with editor names the host maps back. Files live in
+`~/.config/<app_id>/`, written atomically, loaded by `lntrn_app::run`.
+**Why:** The serializer already survives renames and reorders; the layout
+is small enough that a readable line beats a format.
+
+## U011 — Pictures bind per run inside the one 2D pass
+**Status:** Accepted (2026-09-03)
+**Decision:** `Images` uploads sRGB textures with mipmaps and hands out
+copyable handles. Image quads carry the image id in a spare vertex slot;
+the pass splits the vertex stream into runs by image and binds group 1
+per run. A frame with no pictures is still one draw call.
+**Why:** No second pipeline, no sorting, no change to layers or clipping.
+
+## U012 — An embedded harness for plugin editors
+**Status:** Accepted (2026-09-03)
+**Decision:** `lntrn_app::Embedded` runs the same shell and frame code
+against a surface made from raw window handles, with events pushed by the
+owner and no winit. The window harness and it share `frame.rs`.
+**Why:** Lantern's VST3 plugins need this exact widget set inside a DAW's
+window; keeping one frame path means the plugin face and the app face
+cannot drift.
+
 ## U004 — Theme carries no app-specific colors
 **Status:** Accepted (Alva, 2026-09-03)
 **Decision:** Prism's per-object-kind colors and its Object/Edit mode

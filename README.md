@@ -27,9 +27,30 @@ with no GPU and no display.
 cargo run -p lntrn-demo
 ```
 
-Split and join areas from the `⋮` menu in any header, drag the gaps,
-right-click the gallery, press F3 for the palette, edit the theme live in
-Preferences.
+Split and join areas from the `⋮` menu in any header, drag the gaps, drag
+a header onto another area to swap them, Ctrl+Space to maximize one.
+Right-click the gallery, press F3 for the palette, Tab through everything,
+edit the theme live in Preferences (it is saved for next time), rebind
+keys in Key Bindings, open a picture from the File menu.
+
+## What is in the box
+
+- **Widgets**: labels, headings, paragraphs, buttons, icon buttons,
+  toggles, tabs, sliders, drag numbers, knobs, dropdowns, menu buttons,
+  selectables, text fields, a multi-line text area with undo, colour
+  picker, tree view, progress bars, collapsing sections, scroll areas,
+  columns, pictures, props-driven panels, a keymap editor.
+- **Shell**: title bar with menus, resizable and swappable areas, maximize,
+  command palette, file browser, modal dialogs, toasts, context menus with
+  tool strips, keyboard focus with rings and scroll-into-view, an in-app
+  clipboard, timed redraws for animation, preferences and layout saved
+  between runs.
+- **Harnesses**: a winit window (`lntrn_app::run`) and an embedded view
+  for plugin editors (`lntrn_app::Embedded`) that draws into a window the
+  owner supplies.
+- **Testing**: `lntrn_ui::testing::Harness` runs any widget code headless
+  with synthetic clicks, drags and keys, so behaviour is tested without a
+  window.
 
 ## Use it from another project
 

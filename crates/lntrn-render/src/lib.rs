@@ -16,6 +16,7 @@ pub mod graph;
 pub mod images;
 pub mod pass2d;
 pub mod shader;
+pub mod shapes;
 pub mod surface;
 
 pub use atlas_gpu::AtlasTexture;
