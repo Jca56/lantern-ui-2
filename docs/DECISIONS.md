@@ -246,3 +246,26 @@ widgets. Selection and order stay wherever the app keeps them (a
 document, an undo stack).
 **Rejected:** A table that takes rows as strings (no widgets in cells, and
 every app formats twice). A retained model with two-way binding (D016).
+
+## U016 — Undo is a stack of snapshots
+**Status:** Accepted (2026-09-03)
+**Decision:** `lntrn_core::Undo<T>` keeps whole snapshots (capped, with
+time-based coalescing for bursts). A host clones its document before an
+edit and pushes the clone; Ctrl+Z swaps it back. No command objects.
+**Why:** `ChunkedVec` makes a document clone O(chunks) and every edit
+stamps a version, so snapshots are cheap and cache keys stay sound
+across undo branches. One mechanism for every app, and for the text
+widgets' own history.
+**Rejected:** Command objects with `apply`/`revert` — every operation
+written twice, and the second copy is where the bugs live.
+
+## U017 — Accessibility switches live in the shell's preferences
+**Status:** Accepted (2026-09-03)
+**Decision:** `reduce_motion` (no easing, fades or sweeps) and
+`debug_overlay` are shell preferences beside `ui_scale`. The framework
+honours them itself — `Ui::animate`, toasts and busy bars read
+`UiState::reduce_motion` — so a host gets them without writing a line.
+Menu rows that toggle a preference show its state; the shell fills the
+check in when the menu opens.
+**Why:** Big text, big targets, and no motion the user did not ask for
+are requirements (ARCHITECTURE §1), not features an app opts into.

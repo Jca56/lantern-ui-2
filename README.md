@@ -13,7 +13,7 @@ lntrn-render   wgpu wrapper, render graph, 2D pass, shaders   (wgpu)
 lntrn-text     fonts, shaping, layout, raster, atlas          GPU-free
 lntrn-image    PNG and JPEG decoders                          pure std
 lntrn-props    reflection: describe a struct once             pure std
-lntrn-core     handles, arenas, chunked arrays, jobs, log     pure std
+lntrn-core     handles, arenas, chunked vecs, jobs, undo, log pure std
 lntrn-math     f64 vectors, matrices, quaternions, rects      pure std
 lntrn-demo     the widget gallery and a reference host
 ```
@@ -44,16 +44,17 @@ them.
   text fields (placeholders, passwords), a multi-line text area with
   undo, colour picker, tree view, tables with sortable and resizable
   columns whose cells are widgets, virtual lists (ten thousand rows cost
-  the same as ten), scroll areas that go down or both ways, progress
-  bars, collapsing sections, columns, pictures, props-driven panels, a
-  keymap editor.
+  the same as ten), scroll areas that go down or both ways, level
+  meters, waveforms, a curve editor, progress bars, collapsing sections,
+  columns, pictures, props-driven panels, a keymap editor.
 - **Shell**: title bar with menus (rules, greyed rows, submenus, key
   hints, keyboard navigation), resizable and swappable areas, maximize,
   command palette, file browser, modal dialogs (with the host's own
   widgets inside when it wants them), toasts, context menus with
   tool strips, keyboard focus with rings and scroll-into-view, the system
   clipboard, input methods, files dropped from outside, timed redraws for
-  animation, preferences and layout saved between runs.
+  animation (or none, with the reduce-motion preference), a debug overlay
+  of what a rebuild costs, preferences and layout saved between runs.
 - **Harnesses**: a winit window (`lntrn_app::run`) and an embedded view
   for plugin editors (`lntrn_app::Embedded`) that draws into a window the
   owner supplies.

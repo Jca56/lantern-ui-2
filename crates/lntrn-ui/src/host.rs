@@ -172,9 +172,10 @@ impl MenuItem {
         self
     }
 
-    /// A row that flips the boolean shell preference `field`.
-    pub fn pref_toggle(label: &str, field: &str, on: bool) -> Self {
-        Self::new(label, Action::new(actions::PREF_TOGGLE).with("field", Value::Str(field.to_owned()))).checked(on)
+    /// A row that flips the boolean shell preference `field` and shows
+    /// whether it is on (the shell fills that in when the menu opens).
+    pub fn pref_toggle(label: &str, field: &str) -> Self {
+        Self::new(label, Action::new(actions::PREF_TOGGLE).with("field", Value::Str(field.to_owned())))
     }
 }
 

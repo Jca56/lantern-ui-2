@@ -22,7 +22,7 @@ whatever comes next share one widget set, one text engine, one theme.
 ```
 lntrn-math     Vec2/3/4, Mat3/4, Quat, Transform, Rect, Color, Aabb, Ray, Plane, Frustum. f64.
 lntrn-core     Handle/Arena, Id, ChunkedVec (persistent array), jobs (pool, scope,
-               parallel_for), block_on, bytes (Pod), Pcg32, log.
+               parallel_for), Undo (snapshot stack), block_on, bytes (Pod), Pcg32, log.
 lntrn-props    props! { struct } → Reflect: field ids, labels, ranges, subtypes, get/set
                by index, nested structs and lists, field-id-tagged serialization.
 lntrn-image    PNG (all bit depths, Adam7) and JPEG (baseline + progressive) decoders.
@@ -105,7 +105,14 @@ scroll area brings a newly focused widget into view.
 per-widget value toward a target and keeps asking for frames
 (`request_redraw_after`) until it rests; the harness sleeps with
 `WaitUntil` in between and is idle otherwise. Toasts and the busy bar use
-the same mechanism.
+the same mechanism. The `reduce_motion` preference turns all of it off:
+values snap, toasts go when their time is up, busy bars hold still, and
+nothing asks for a frame it does not need.
+
+**Undo** — `lntrn_core::Undo<T>` is a stack of snapshots with coalescing
+for bursts (a drag, fast typing). A document on `ChunkedVec` clones in
+O(chunks), so a host keeps one snapshot per edit and wires Ctrl+Z to it;
+the text widgets keep their own per-field history the same way.
 
 **Memory** — per-widget state lives in a map keyed by widget id *and*
 kind, so a number field keeps its typing buffer, its drag origin and its
@@ -185,6 +192,11 @@ synthetic input: `click_on(id, |ui| ...)`, `drag(from, to, ...)`,
 label path (`WidgetId::ROOT.with("list").with_index(3).with("Row 3")`).
 `shell_frame` drives a whole `Shell` with a host the same way. Every widget
 and shell feature has a headless test in `crates/lntrn-ui/tests/`.
+
+The `debug_overlay` preference draws what the last rebuild cost (its
+time and vertex count), the atlas size and glyph count, and the layout
+cache's hit rate in the top-right corner (`Shell::stats` has the same
+numbers). It asks for no frames of its own.
 
 ## 8. Adding a widget
 

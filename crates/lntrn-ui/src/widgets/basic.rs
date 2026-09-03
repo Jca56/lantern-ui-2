@@ -227,12 +227,17 @@ impl Ui<'_> {
         self.recessed(rect, self.theme.field);
         let inner = rect.shrink(self.m.border);
         let filled = if t < 0.0 {
-            // A third of the track, bouncing once every 1.6 seconds.
-            let phase = (self.state.now / 1.6).fract();
-            let x = if phase < 0.5 { phase * 2.0 } else { 2.0 - phase * 2.0 };
+            // A third of the track, bouncing once every 1.6 seconds; held
+            // still in the middle with reduced motion.
             let w = inner.width() / 3.0;
+            let x = if self.state.reduce_motion {
+                0.5
+            } else {
+                let phase = (self.state.now / 1.6).fract();
+                self.state.request_redraw_after(1.0 / 60.0);
+                if phase < 0.5 { phase * 2.0 } else { 2.0 - phase * 2.0 }
+            };
             let x0 = inner.min.x + (inner.width() - w) * x;
-            self.state.request_redraw_after(1.0 / 60.0);
             Rect::new(Vec2::new(x0, inner.min.y), Vec2::new(x0 + w, inner.max.y))
         } else {
             Rect::new(inner.min, Vec2::new(inner.min.x + inner.width() * t.clamp(0.0, 1.0), inner.max.y))

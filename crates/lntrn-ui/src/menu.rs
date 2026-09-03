@@ -6,13 +6,37 @@
 //! closes the menu, and the press falls through to what is underneath.
 
 use lntrn_math::{Rect, Vec2};
+use lntrn_props::{Reflect, Value};
 
 use crate::event::Key;
-use crate::host::{Action, Host, HostCx, MenuItem};
+use crate::host::{Action, Host, HostCx, MenuItem, actions};
 use crate::popups::{PopupResult, dispatch};
+use crate::prefs::Prefs;
 use crate::state::CursorIcon;
 use crate::theme::Metrics;
 use crate::ui::{Sense, Ui};
+
+/// Rows get what the host and the shell know: a key hint for their
+/// action, and for a preference toggle, whether it is on right now.
+pub(crate) fn prepare<H: Host>(host: &H, prefs: &Prefs, items: &mut [MenuItem]) {
+    for it in items {
+        if it.separator {
+            continue;
+        }
+        if it.sub.is_empty() {
+            if it.hint.is_none() {
+                it.hint = host.key_hint(&it.action);
+            }
+            if it.action.id == actions::PREF_TOGGLE
+                && let Some(Value::Str(field)) = it.action.arg("field")
+                && let Some(Value::Bool(on)) = (prefs as &dyn Reflect).get_by_name(field)
+            {
+                it.checked = Some(on);
+            }
+        }
+        prepare(host, prefs, &mut it.sub);
+    }
+}
 
 /// An open named menu.
 #[derive(Clone, Debug)]
@@ -302,6 +326,44 @@ mod tests {
         assert_eq!(next_row(&items, Some(1), -1), Some(4), "wraps backwards");
         assert_eq!(next_row(&[], None, 1), None);
         assert_eq!(next_row(&[MenuItem::separator()], None, 1), None, "nothing to land on");
+    }
+
+    #[test]
+    fn preparing_fills_hints_and_preference_checks() {
+        struct Keys;
+        impl Host for Keys {
+            type Editor = u8;
+            type AreaState = ();
+            fn editors(&self) -> &[u8] {
+                &[0]
+            }
+            fn editor_label(&self, _: u8) -> &str {
+                ""
+            }
+            fn title(&self) -> String {
+                String::new()
+            }
+            fn key_hint(&self, action: &Action) -> Option<String> {
+                (action.id == "open").then(|| "Ctrl+O".to_owned())
+            }
+            fn draw_body(&mut self, _: u8, _: &mut Ui, _: &mut crate::host::AreaCx<()>) -> bool {
+                false
+            }
+            fn run(&mut self, _: &Action, _: &mut HostCx) {}
+        }
+        let prefs = Prefs { focus_follows_mouse: true, ..Prefs::default() };
+        let mut items = vec![
+            MenuItem::new("Open", Action::new("open")),
+            MenuItem::new("Quit", Action::new("quit")).hint("Q"),
+            MenuItem::separator(),
+            MenuItem::sub("Prefs", vec![MenuItem::pref_toggle("Follow", "focus_follows_mouse"), MenuItem::pref_toggle("Motion", "reduce_motion"), MenuItem::pref_toggle("Nope", "no_such_field")]),
+        ];
+        prepare(&Keys, &prefs, &mut items);
+        assert_eq!(items[0].hint.as_deref(), Some("Ctrl+O"));
+        assert_eq!(items[1].hint.as_deref(), Some("Q"), "a hint of its own stands");
+        assert_eq!(items[3].sub[0].checked, Some(true), "read from the preferences");
+        assert_eq!(items[3].sub[1].checked, Some(false));
+        assert_eq!(items[3].sub[2].checked, None, "an unknown field shows no mark");
     }
 
     #[test]

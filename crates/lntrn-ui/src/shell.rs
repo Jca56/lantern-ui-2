@@ -3,15 +3,19 @@
 //! through the [`Host`], routes leftover keys to it, hosts popups, carries
 //! out the host's requests, and reports what the app should do next.
 
+use std::time::Instant;
+
 use lntrn_math::{Color, Rect, Vec2};
+use lntrn_props::{Reflect, Value};
 use lntrn_render::DrawList;
 use lntrn_text::TextEngine;
 
+use crate::debug_overlay::FrameStats;
 use crate::event::{Event, MouseButton};
 use crate::file_browser::FileBrowser;
-use crate::host::{AreaCx, Capture, Host, HostCx, MenuItem, ShellRequest};
+use crate::host::{AreaCx, Capture, Host, HostCx, ShellRequest};
 use crate::id::WidgetId;
-use crate::menu::MenuState;
+use crate::menu::{self, MenuState};
 use crate::popups::{self, Popup, dispatch};
 use crate::prefs::Prefs;
 use crate::screen::{AreaId, Axis, Screen};
@@ -40,17 +44,6 @@ pub struct ShellOutput {
     pub ime: Option<Rect>,
 }
 
-/// Rows without a hint of their own get the host's key binding for their
-/// action.
-fn fill_hints<H: Host>(host: &H, items: &mut [MenuItem]) {
-    for it in items {
-        if it.hint.is_none() && !it.separator && it.sub.is_empty() {
-            it.hint = host.key_hint(&it.action);
-        }
-        fill_hints(host, &mut it.sub);
-    }
-}
-
 /// Facts about the window the shell cannot know on its own.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct WindowState {
@@ -74,13 +67,14 @@ pub struct Shell<H: Host> {
     /// An area whose header grip is being dragged, to drop on another.
     pub(crate) drag_area: Option<AreaId>,
     pub(crate) toasts: Vec<crate::toasts::Toast>,
+    pub(crate) stats: FrameStats,
 }
 
 impl<H: Host> Shell<H> {
     /// One area hosting `editor`. Split [`Shell::screen`] for a richer
     /// starting layout.
     pub fn new(editor: H::Editor) -> Self {
-        Self { screen: Screen::new(editor), state: UiState::new(), prefs: Prefs::default(), popup: None, drag_sep: None, drag_area: None, toasts: Vec::new() }
+        Self { screen: Screen::new(editor), state: UiState::new(), prefs: Prefs::default(), popup: None, drag_sep: None, drag_area: None, toasts: Vec::new(), stats: FrameStats::default() }
     }
 
     /// Metrics for the current preferences at `window_scale`.
@@ -115,7 +109,7 @@ impl<H: Host> Shell<H> {
     pub fn open_menu(&mut self, host: &H, name: &str, at: Vec2) {
         self.popup = host.menu(name).map(|menu| {
             let mut items = menu.items;
-            fill_hints(host, &mut items);
+            menu::prepare(host, &self.prefs, &mut items);
             Popup::Menu(MenuState::new(name, &menu.title, items, at))
         });
         self.state.request_rebuild = true;
@@ -160,7 +154,6 @@ impl<H: Host> Shell<H> {
                 self.state.focus = None;
             }
             ShellRequest::PrefToggle(field) => {
-                use lntrn_props::{Reflect, Value};
                 let prefs: &mut dyn Reflect = &mut self.prefs;
                 if let Some(Value::Bool(on)) = prefs.get_by_name(&field) {
                     let _ = prefs.set_by_name(&field, Value::Bool(!on));
@@ -175,9 +168,11 @@ impl<H: Host> Shell<H> {
     /// One rebuild. `window` is the whole window in physical pixels.
     #[allow(clippy::too_many_arguments)]
     pub fn frame(&mut self, host: &mut H, events: &[Event], window: Rect, window_scale: f64, ws: WindowState, text: &mut TextEngine, draw: &mut DrawList) -> ShellOutput {
+        let started = Instant::now();
         let theme = self.prefs.theme.clone();
         let m = self.metrics(window_scale);
         let mut requests: Vec<ShellRequest> = Vec::new();
+        self.state.reduce_motion = self.prefs.reduce_motion;
 
         // A running tool owns button presses and keys; the UI still sees
         // motion (hover, cursor), releases (so a drag that started a tool
@@ -392,6 +387,9 @@ impl<H: Host> Shell<H> {
             }
         }
         self.draw_toasts(draw, text, &theme, m, window);
+        if self.prefs.debug_overlay {
+            self.draw_debug(draw, text, &theme, m, window);
+        }
 
         // ---- files dropped from outside that no widget took ----------------
         let dropped = self.state.take_dropped_files();
@@ -452,6 +450,7 @@ impl<H: Host> Shell<H> {
         }
 
         self.state.end_frame();
+        self.stats = FrameStats { rebuild_ms: started.elapsed().as_secs_f64() * 1000.0, vertices: draw.vertex_count(), frames: self.stats.frames + 1 };
         let cursor = if captured {
             CursorIcon::Grabbing
         } else if let Some(c) = drag_cursor {

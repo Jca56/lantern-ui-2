@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 
 use lntrn_app::lntrn_render::{Gpu, Images};
 use lntrn_app::{AppConfig, AppHost, run, wgpu};
+use lntrn_core::Undo;
 use lntrn_image::Image;
 use lntrn_props::{Reflect, Value, props};
 use lntrn_ui::gallery::{self, GalleryState, TABS};
@@ -30,12 +31,14 @@ enum Editor {
 const EDITORS: [Editor; 5] = [Editor::Gallery, Editor::Preferences, Editor::Notes, Editor::Keys, Editor::Empty];
 
 /// Palette entries: (action id, label).
-const PALETTE: [(&str, &str); 9] = [
+const PALETTE: [(&str, &str); 11] = [
     ("demo.open", "Open File…"),
     ("demo.open_image", "Open Picture…"),
     ("demo.save_as", "Save As…"),
     ("demo.rename_ask", "Rename Notes…"),
     ("demo.reset", "Reset Gallery"),
+    ("demo.undo", "Undo"),
+    ("demo.redo", "Redo"),
     ("demo.about", "About"),
     (actions::MAXIMIZE, "Maximize Area"),
     (actions::PALETTE, "Command Palette"),
@@ -59,10 +62,10 @@ struct Demo {
     /// What the Rename dialog's field holds while it is open.
     rename: String,
     status: String,
-    /// Mirror of the shell preference, for the Help menu's check mark.
-    ffm: bool,
     /// A decoded picture waiting for the GPU (uploaded in `after_rebuild`).
     pending_image: Option<(String, Image)>,
+    /// Snapshots of the gallery before each action that changes it.
+    undo: Undo<GalleryState>,
 }
 
 /// A picture made from arithmetic: a sky gradient, a sun, rolling hills.
@@ -104,10 +107,12 @@ impl Demo {
         keys.bind(CTX_WINDOW, KeyItem::new(Trigger::key(Char('s'), ctrl | shift), "demo.save_as"));
         keys.bind(CTX_WINDOW, KeyItem::new(Trigger::key(Char('r'), ctrl), "demo.reset"));
         keys.bind(CTX_WINDOW, KeyItem::new(Trigger::key(Char('f'), ctrl), actions::MENU).with("menu", Value::Str("file".into())));
+        keys.bind(CTX_WINDOW, KeyItem::new(Trigger::key(Char('z'), ctrl), "demo.undo"));
+        keys.bind(CTX_WINDOW, KeyItem::new(Trigger::key(Char('z'), ctrl | shift), "demo.redo"));
         Self {
             gallery: GalleryState::default(),
-            ffm: false,
             pending_image: None,
+            undo: Undo::default(),
             keys,
             notes_name: "Notes".to_owned(),
             rename: String::new(),
@@ -122,10 +127,15 @@ impl Demo {
             Ok(img) => {
                 self.status = format!("Decoded {} ({}×{})", path, img.width, img.height);
                 self.pending_image = Some((path.to_owned(), img));
-                self.gallery.tab = 5;
+                self.gallery.tab = 6;
             }
             Err(e) => cx.request(ShellRequest::Dialog(Dialog::notice("Could not open the picture", &format!("{path}\n{e}")))),
         }
+    }
+
+    /// About to change the gallery: keep what it was.
+    fn remember(&mut self) {
+        self.undo.push(self.gallery.clone());
     }
 
     /// The Rename dialog was confirmed: take the name it holds.
@@ -206,7 +216,7 @@ impl Host for Demo {
     }
 
     fn title_menus(&self) -> &[(&str, &str)] {
-        &[("File", "file"), ("Help", "help")]
+        &[("File", "file"), ("Edit", "edit"), ("Help", "help")]
     }
 
     fn menu(&self, name: &str) -> Option<Menu> {
@@ -225,6 +235,15 @@ impl Host for Demo {
                     MenuItem::new("Quit", Action::new(actions::QUIT)),
                 ],
             ),
+            "edit" => Menu::new(
+                "Edit",
+                vec![
+                    MenuItem::new("Undo", Action::new("demo.undo")).enabled(self.undo.can_undo()),
+                    MenuItem::new("Redo", Action::new("demo.redo")).enabled(self.undo.can_redo()),
+                    MenuItem::separator(),
+                    MenuItem::new("Reset Gallery…", Action::new("demo.reset_ask")),
+                ],
+            ),
             "help" => Menu::new(
                 "Help",
                 vec![
@@ -232,7 +251,10 @@ impl Host for Demo {
                     MenuItem::new("Maximize Area", Action::new(actions::MAXIMIZE)),
                     MenuItem::sub("Gallery Tab", TABS.iter().enumerate().map(|(i, name)| MenuItem::new(name, Action::new("demo.tab").with("tab", Value::I64(i as i64))).checked(self.gallery.tab == i)).collect()),
                     MenuItem::separator(),
-                    MenuItem::pref_toggle("Focus Follows Mouse", "focus_follows_mouse", self.ffm),
+                    MenuItem::pref_toggle("Focus Follows Mouse", "focus_follows_mouse"),
+                    MenuItem::pref_toggle("Reduce Motion", "reduce_motion"),
+                    MenuItem::pref_toggle("Debug Overlay", "debug_overlay"),
+                    MenuItem::separator(),
                     MenuItem::new("About", Action::new("demo.about")),
                 ],
             ),
@@ -263,10 +285,7 @@ impl Host for Demo {
                 }
                 false
             }
-            Editor::Preferences => {
-                self.ffm = cx.prefs.focus_follows_mouse;
-                prefs::draw(ui, cx.prefs)
-            }
+            Editor::Preferences => prefs::draw(ui, cx.prefs),
             Editor::Notes => {
                 ui.heading(&self.notes_name);
                 ui.label_dim(&format!("Area {} · {} · Ctrl+Enter saves", cx.area, if cx.active { "focused" } else { "not focused" }));
@@ -319,13 +338,37 @@ impl Host for Demo {
             }
             "demo.rename" => self.finish_rename(cx),
             "demo.reset" => {
+                self.remember();
                 self.gallery = GalleryState::default();
                 self.status = "Gallery reset".to_owned();
                 cx.toast("Gallery reset");
             }
-            "demo.count" => self.gallery.clicks = (self.gallery.clicks as i64 + int("by")).max(0) as u32,
-            "demo.tab" => self.gallery.tab = int("tab") as usize,
-            "demo.toggle_b" => self.gallery.toggle_b = !self.gallery.toggle_b,
+            "demo.count" => {
+                self.remember();
+                self.gallery.clicks = (self.gallery.clicks as i64 + int("by")).max(0) as u32;
+            }
+            "demo.tab" => {
+                self.remember();
+                self.gallery.tab = int("tab") as usize;
+            }
+            "demo.toggle_b" => {
+                self.remember();
+                self.gallery.toggle_b = !self.gallery.toggle_b;
+            }
+            "demo.undo" => match self.undo.undo(self.gallery.clone()) {
+                Some(g) => {
+                    self.gallery = g;
+                    cx.toast("Undone");
+                }
+                None => cx.toast("Nothing to undo"),
+            },
+            "demo.redo" => match self.undo.redo(self.gallery.clone()) {
+                Some(g) => {
+                    self.gallery = g;
+                    cx.toast("Redone");
+                }
+                None => cx.toast("Nothing to redo"),
+            },
             "demo.about" => cx.request(ShellRequest::Dialog(Dialog::notice("Lantern UI 0.2", "Rust, wgpu and winit. Everything else is ours: math, reflection, text, rendering, widgets."))),
             other => self.status = format!("unknown action {other}"),
         }
@@ -339,6 +382,9 @@ impl Host for Demo {
         let Some(Value::I64(by)) = props.get_by_name("amount") else {
             return false;
         };
+        if !adjust {
+            self.remember();
+        }
         self.gallery.clicks += by as u32;
         self.status = if adjust { format!("Adjusted: +{by}") } else { format!("Applied: +{by}") };
         true

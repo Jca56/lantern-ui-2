@@ -6,6 +6,7 @@
 //!   version, so `(id, version)` is a sound cache key across undo branches.
 //! - [`Id`] / [`IdAllocator`]: document-global, never-reused 64-bit ids.
 //! - [`jobs`]: thread pool with structured `scope` and `parallel_for`.
+//! - [`Undo`]: an undo stack of snapshots, cheap on top of `ChunkedVec`.
 //! - [`block_on`], [`bytes`], [`Pcg32`], [`log`]: the small things we refuse
 //!   to import.
 //!
@@ -20,6 +21,7 @@ pub mod id;
 pub mod jobs;
 pub mod log;
 pub mod prng;
+pub mod undo;
 
 pub use arena::Arena;
 pub use block_on::block_on;
@@ -29,3 +31,4 @@ pub use handle::Handle;
 pub use id::{Id, IdAllocator};
 pub use jobs::{Pool, Scope};
 pub use prng::Pcg32;
+pub use undo::Undo;

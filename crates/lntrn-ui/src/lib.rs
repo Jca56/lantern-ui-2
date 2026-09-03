@@ -18,6 +18,7 @@
 //! wraps that in a window; `lntrn-demo` is a small complete host.
 
 pub mod context_menu;
+pub mod debug_overlay;
 pub mod event;
 pub mod file_browser;
 pub mod focus;
@@ -46,6 +47,7 @@ pub mod ui;
 pub mod widgets;
 
 pub use context_menu::{ContextMenu, Item, Tool};
+pub use debug_overlay::FrameStats;
 pub use event::{Event, Key, Modifiers, MouseButton, WheelDelta};
 pub use host::{Action, AreaCx, Capture, Dialog, Host, HostCx, Menu, MenuItem, ShellRequest, actions};
 pub use icons::Icon;
@@ -59,6 +61,6 @@ pub use theme::{Metrics, Theme};
 pub use titlebar::{ResizeEdge, WindowCommand};
 pub use toasts::Toast;
 pub use ui::{DropZone, FILL, KeyStep, Response, Sense, Ui};
-pub use widgets::{Align, Cell, Column, RowStep, ScrollView, Table, TableResponse, TextOpts, TextResponse, TreeResponse};
+pub use widgets::{Align, Cell, Column, CurveResponse, RowStep, ScrollView, Table, TableResponse, TextOpts, TextResponse, TreeResponse};
 /// Re-exported: the handle [`Ui::image`] draws.
 pub use lntrn_render::ImageHandle;

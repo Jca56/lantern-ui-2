@@ -320,12 +320,12 @@ impl<'a> Ui<'a> {
     /// Keeps asking for rebuilds while it moves, so hover fades and sliding
     /// panels cost nothing once they rest. A fresh slot starts at `target`.
     pub fn animate(&mut self, id: WidgetId, target: f64, seconds: f64) -> f64 {
-        let now = self.state.now;
+        let (now, snap) = (self.state.now, self.state.reduce_motion);
         let a = self.state.anim(id, target);
         // A long idle must not turn into one huge step.
         let dt = (now - a.time).clamp(0.0, 0.1);
         a.time = now;
-        if seconds <= 0.0 {
+        if seconds <= 0.0 || snap {
             a.value = target;
             return target;
         }

@@ -114,6 +114,9 @@ pub struct UiState {
     /// Where the focused text widget's caret is, so the input method can
     /// place its candidate window. Set each frame by the widget.
     pub ime_rect: Option<Rect>,
+    /// The `reduce_motion` preference: [`crate::Ui::animate`] snaps, toasts
+    /// vanish instead of fading, busy bars hold still.
+    pub reduce_motion: bool,
     /// Keyboard-focusable widgets of this frame in declaration order; Tab
     /// walks it (see [`crate::Ui::focusable`]).
     pub focus_order: Vec<WidgetId>,
@@ -178,6 +181,7 @@ impl UiState {
             dropped_files: Vec::new(),
             ime_preedit: None,
             ime_rect: None,
+            reduce_motion: false,
             focus_order: Vec::new(),
             focus_visible: false,
             focus_rect: None,

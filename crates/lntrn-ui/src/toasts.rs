@@ -43,10 +43,19 @@ impl<H: Host> Shell<H> {
         let max_w = m.px(600.0).min(window.width() - m.pad * 2.0);
         let mut y = window.max.y - m.pad;
         let mut soonest = f64::MAX;
+        let reduce = ui.state.reduce_motion;
         for t in self.toasts.iter().rev() {
             let remaining = LIFE - (now - t.at);
-            let alpha = (remaining / FADE).clamp(0.0, 1.0);
-            soonest = soonest.min(if remaining <= FADE { 1.0 / 60.0 } else { remaining - FADE });
+            // With reduced motion a toast just goes when its time is up.
+            let fading = remaining <= FADE && !reduce;
+            let alpha = if fading { (remaining / FADE).clamp(0.0, 1.0) } else { 1.0 };
+            soonest = soonest.min(if fading {
+                1.0 / 60.0
+            } else if reduce {
+                remaining
+            } else {
+                remaining - FADE
+            });
             let w = (ui.measure(&t.text, &style) + m.pad * 2.0).min(max_w);
             let rect = Rect::from_min_size(Vec2::new(window.max.x - m.pad - w, y - m.widget_h), Vec2::new(w, m.widget_h));
             ui.floating_panel(rect, theme.header.fade(alpha));

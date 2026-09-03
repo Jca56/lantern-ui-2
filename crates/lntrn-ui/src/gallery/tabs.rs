@@ -1,10 +1,46 @@
-//! The gallery's bigger tabs: knobs, lists, tables and pictures.
+//! The gallery's bigger tabs: knobs, lists, tables, audio and pictures.
 
 use lntrn_math::{Rect, Vec2};
 
 use super::{GalleryState, KINDS};
 use crate::ui::{FILL, Ui};
 use crate::widgets::{Column, RowStep};
+
+pub(super) fn audio(ui: &mut Ui, g: &mut GalleryState) {
+    ui.label_dim("Meters hold their peaks, the waveform seeks on a click, the curve's points drag; double-click adds one, Delete removes it.");
+    ui.row(|ui| {
+        ui.toggle("Play", &mut g.playing);
+        ui.label_dim(if g.playing { "A pretend signal breathes at thirty frames a second." } else { "Stopped: nothing asks for frames." });
+    });
+    if g.playing {
+        let t = ui.now();
+        let levels = [(0.55 + 0.35 * (t * 5.3).sin() * (t * 0.7).cos().abs()).clamp(0.0, 1.0), (0.5 + 0.4 * (t * 4.1 + 1.0).sin() * (t * 0.5).sin().abs()).clamp(0.0, 1.0)];
+        for (ch, level) in levels.into_iter().enumerate() {
+            let (_, peak) = g.meter[ch];
+            g.meter[ch] = (level, (peak - 0.004).max(level));
+        }
+        g.playhead = (t * 0.08).fract();
+        ui.state.request_redraw_after(1.0 / 30.0);
+    }
+    ui.columns(&[ui.m.px(120.0), FILL], |ui, col| {
+        if col == 0 {
+            ui.level_meter("L  R", &g.meter, ui.m.px(260.0));
+        } else {
+            ui.heading("Waveform");
+            if let Some(t) = ui.waveform("wave", &g.samples, ui.m.px(150.0), Some(g.playhead)) {
+                g.playhead = t;
+            }
+            ui.slider("Playhead", &mut g.playhead, 0.0, 1.0, 0.0);
+        }
+    });
+    ui.heading("Curve");
+    let h = ui.remaining_height().min(ui.m.px(260.0));
+    let resp = ui.curve_editor("curve", &mut g.curve, h);
+    if let Some(i) = resp.selected {
+        let p = g.curve[i];
+        ui.label_dim(&format!("Point {} at {:.2}, {:.2}", i + 1, p.x, p.y));
+    }
+}
 
 pub(super) fn tables(ui: &mut Ui, g: &mut GalleryState) {
     ui.label_dim("Click a header to sort, drag its edge to resize, click a row and use Up and Down. Cells are widgets: drag the sizes, flip the toggles.");

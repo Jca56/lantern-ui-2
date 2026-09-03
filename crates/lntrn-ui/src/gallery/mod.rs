@@ -8,10 +8,22 @@ use lntrn_math::Vec2;
 
 use crate::icons::Icon;
 use crate::ui::{FILL, Ui};
-use tabs::{knobs, lists, pictures, tables};
+use tabs::{audio, knobs, lists, pictures, tables};
 
 /// The gallery's tabs, in order.
-pub const TABS: [&str; 6] = ["Controls", "Knobs", "Text", "Lists", "Tables", "Pictures"];
+pub const TABS: [&str; 7] = ["Controls", "Knobs", "Text", "Lists", "Tables", "Audio", "Pictures"];
+
+/// A second of a decaying chord, for the waveform.
+fn sample_wave() -> Vec<f32> {
+    use core::f32::consts::TAU;
+    (0..24_000)
+        .map(|i| {
+            let t = i as f32 / 24_000.0;
+            let env = (1.0 - t).powi(2);
+            ((t * 220.0 * TAU).sin() * 0.6 + (t * 330.0 * TAU).sin() * 0.3 + (t * 1760.0 * TAU).sin() * 0.1) * env
+        })
+        .collect()
+}
 
 /// The kinds the table's rows come in.
 pub const KINDS: [&str; 4] = ["Mesh", "Light", "Camera", "Empty"];
@@ -76,6 +88,13 @@ pub struct GalleryState {
     pub hi: f64,
     pub faders: [f64; 3],
     pub pad: (f64, f64),
+    /// The Audio tab: a pretend transport.
+    pub playing: bool,
+    pub samples: Vec<f32>,
+    pub playhead: f64,
+    /// `(level, peak)` per channel.
+    pub meter: [(f64, f64); 2],
+    pub curve: Vec<Vec2>,
 }
 
 impl Default for GalleryState {
@@ -113,6 +132,11 @@ impl Default for GalleryState {
             hi: 80.0,
             faders: [0.7, 0.5, 0.3],
             pad: (0.5, 0.5),
+            playing: false,
+            samples: sample_wave(),
+            playhead: 0.25,
+            meter: [(0.6, 0.75), (0.5, 0.65)],
+            curve: vec![Vec2::new(0.0, 0.0), Vec2::new(0.25, 0.9), Vec2::new(0.6, 0.5), Vec2::new(1.0, 0.1)],
             notes: "Several lines of text.\nClick to place the caret, drag to select, double-click a word.\nUp and Down remember the column; Enter breaks a line; Ctrl+Enter commits.\n\nWrapping happens at the box edge, so a long line like this one folds onto the next row when the area is narrow enough to need it.".to_owned(),
         }
     }
@@ -130,6 +154,7 @@ pub fn draw(ui: &mut Ui, g: &mut GalleryState) {
         2 => text(ui, g),
         3 => lists(ui, g),
         4 => tables(ui, g),
+        5 => audio(ui, g),
         _ => pictures(ui, g),
     }
 }
