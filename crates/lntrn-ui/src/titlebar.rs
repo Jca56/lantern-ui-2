@@ -37,6 +37,18 @@ pub enum WindowCommand {
     Resize(ResizeEdge),
 }
 
+/// What the title bar reported after drawing.
+pub(crate) struct TitleBar {
+    /// The rect left for the areas.
+    pub rest: Rect,
+    pub command: Option<WindowCommand>,
+    /// A menu label was clicked: the menu's name and where its popup goes.
+    pub open_menu: Option<(String, Vec2)>,
+    /// The pointer is on a menu label (the same pair), so an open menu can
+    /// switch to it.
+    pub hovered_menu: Option<(String, Vec2)>,
+}
+
 /// Grab zone along the window edges, in logical pixels.
 const EDGE: f64 = 5.0;
 /// Corner zone: this far from both edges.
@@ -95,9 +107,7 @@ impl<H: Host> Shell<H> {
     }
 
     /// Draw the title bar across the top of `window`. `menus` are the host's
-    /// (label, menu name) pairs on the left. Returns the rect left for the
-    /// areas, any window command the user triggered, and a menu to open (its
-    /// name and where).
+    /// (label, menu name) pairs on the left.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn title_bar(
         &mut self,
@@ -110,10 +120,11 @@ impl<H: Host> Shell<H> {
         title: &str,
         status: &str,
         menus: &[(&str, &str)],
-    ) -> (Rect, Option<WindowCommand>, Option<(String, Vec2)>) {
+    ) -> TitleBar {
         let (bar, rest) = window.take_top(m.header_h);
         let mut cmd = None;
         let mut open_menu = None;
+        let mut hovered_menu = None;
         let bg = if ws.focused { theme.header } else { theme.header.lerp(theme.bg, 0.5) };
         draw.set_layer(0);
         draw.push_clip_absolute(bar);
@@ -181,6 +192,7 @@ impl<H: Host> Shell<H> {
                 ui.state.cursor_icon = CursorIcon::Pointer;
                 let shown = if resp.held { theme.shade(theme.hover(bg)) } else { theme.hover(bg) };
                 ui.draw.rect_gradient(r, theme.top(shown), theme.bottom(shown));
+                hovered_menu = Some((name.to_owned(), Vec2::new(r.min.x, r.max.y)));
             }
             let inner = Rect::new(Vec2::new(r.min.x + m.pad, r.min.y), Vec2::new(r.max.x - m.pad, r.max.y));
             ui.text_in_rect(label, &style, inner, if ws.focused { theme.text } else { theme.text_dim });
@@ -212,7 +224,7 @@ impl<H: Host> Shell<H> {
         }
         ui.finish();
 
-        (rest, cmd, open_menu)
+        TitleBar { rest, command: cmd, open_menu, hovered_menu }
     }
 }
 

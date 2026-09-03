@@ -3,6 +3,7 @@
 //! [`crate::memory`]) per-widget memory.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::time::Instant;
 
 use lntrn_math::{Rect, Vec2};
@@ -120,9 +121,26 @@ pub struct UiState {
     /// Rebuild again after this many seconds even with no input (an
     /// animation is running). `None`: sleep until input.
     pub wake_after: Option<f64>,
-    /// The clipboard. In-app for now; the harness syncs it with the system
-    /// one when it can.
+    /// The clipboard. Widgets read it to paste and write it through
+    /// [`Self::set_clipboard`]; the harness pulls the system clipboard in
+    /// before a paste and pushes ours out after a copy
+    /// ([`Self::take_clipboard_dirty`]).
     pub clipboard: String,
+    clipboard_dirty: bool,
+    /// A file from outside is being dragged over the window: drop zones
+    /// light up.
+    pub hovering_files: bool,
+    /// Files dropped on the window this frame. A widget under the pointer
+    /// may take them ([`crate::Ui::drop_zone`]); whatever is left goes to
+    /// [`crate::Host::dropped`].
+    pub dropped_files: Vec<PathBuf>,
+    /// An input method's composition in progress: the text and the
+    /// composition caret (byte range into it). Text widgets show it inline
+    /// at their caret; [`Event::Text`] commits it.
+    pub ime_preedit: Option<(String, Option<(usize, usize)>)>,
+    /// Where the focused text widget's caret is, so the input method can
+    /// place its candidate window. Set each frame by the widget.
+    pub ime_rect: Option<Rect>,
     /// Keyboard-focusable widgets of this frame in declaration order; Tab
     /// walks it (see [`crate::Ui::focusable`]).
     pub focus_order: Vec<WidgetId>,
@@ -182,6 +200,11 @@ impl UiState {
             now: 0.0,
             wake_after: None,
             clipboard: String::new(),
+            clipboard_dirty: false,
+            hovering_files: false,
+            dropped_files: Vec::new(),
+            ime_preedit: None,
+            ime_rect: None,
             focus_order: Vec::new(),
             focus_visible: false,
             focus_rect: None,
@@ -206,6 +229,23 @@ impl UiState {
         self.wake_after = Some(self.wake_after.map_or(s, |w| w.min(s)));
     }
 
+    /// Put `text` on the clipboard (a copy or cut). The harness pushes it
+    /// to the system clipboard after the frame.
+    pub fn set_clipboard(&mut self, text: impl Into<String>) {
+        self.clipboard = text.into();
+        self.clipboard_dirty = true;
+    }
+
+    /// Whether a widget wrote the clipboard since the last call.
+    pub fn take_clipboard_dirty(&mut self) -> bool {
+        std::mem::take(&mut self.clipboard_dirty)
+    }
+
+    /// Take this frame's dropped files, leaving none for anyone after.
+    pub fn take_dropped_files(&mut self) -> Vec<PathBuf> {
+        std::mem::take(&mut self.dropped_files)
+    }
+
     /// Fold this frame's events into the state. `line_px` converts wheel
     /// notches to pixels.
     pub fn begin_frame(&mut self, events: &[Event], line_px: f64) {
@@ -227,6 +267,8 @@ impl UiState {
         self.focus_rect = None;
         self.focus_moved = std::mem::take(&mut self.focus_moved_pending);
         self.wake_after = None;
+        self.dropped_files.clear();
+        self.ime_rect = None;
         self.now = self.manual_time.unwrap_or_else(|| self.start.elapsed().as_secs_f64());
         let start = self.pointer;
         for (seq, ev) in events.iter().enumerate() {
@@ -263,11 +305,25 @@ impl UiState {
                 Event::Key { key, pressed: true, repeat, mods } => {
                     self.keys.push(KeyPress { key: *key, mods: *mods, repeat: *repeat, seq });
                 }
-                Event::Text(t) => self.text_input.push((seq, t.clone())),
+                Event::Text(t) => {
+                    self.text_input.push((seq, t.clone()));
+                    // A commit ends the composition it came from.
+                    self.ime_preedit = None;
+                }
+                Event::ImePreedit { text, cursor } => {
+                    self.ime_preedit = if text.is_empty() { None } else { Some((text.clone(), *cursor)) };
+                }
+                Event::FileHovered(_) => self.hovering_files = true,
+                Event::FileHoverLeft => self.hovering_files = false,
+                Event::FileDropped(p) => {
+                    self.hovering_files = false;
+                    self.dropped_files.push(p.clone());
+                }
                 Event::Focus(false) => {
                     self.down = false;
                     self.middle_down = false;
                     self.active = None;
+                    self.hovering_files = false;
                 }
                 _ => {}
             }
@@ -409,5 +465,35 @@ mod tests {
         s.request_redraw_after(0.2);
         s.request_redraw_after(0.9);
         assert_eq!(s.wake_after, Some(0.2), "the soonest wins");
+    }
+
+    #[test]
+    fn clipboard_files_and_ime() {
+        let mut s = UiState::new();
+        assert!(!s.take_clipboard_dirty());
+        s.set_clipboard("hello");
+        assert_eq!(s.clipboard, "hello");
+        assert!(s.take_clipboard_dirty());
+        assert!(!s.take_clipboard_dirty(), "reported once");
+
+        let p = PathBuf::from("/tmp/x.png");
+        s.begin_frame(&[Event::FileHovered(p.clone())], 1.0);
+        assert!(s.hovering_files);
+        s.begin_frame(&[Event::FileDropped(p.clone())], 1.0);
+        assert!(!s.hovering_files, "the drop ends the hover");
+        assert_eq!(s.dropped_files, vec![p.clone()]);
+        assert_eq!(s.take_dropped_files(), vec![p]);
+        assert!(s.dropped_files.is_empty());
+        s.begin_frame(&[Event::FileHovered(PathBuf::new()), Event::FileHoverLeft], 1.0);
+        assert!(!s.hovering_files);
+
+        s.begin_frame(&[Event::ImePreedit { text: "ni".into(), cursor: Some((2, 2)) }], 1.0);
+        assert_eq!(s.ime_preedit, Some(("ni".to_owned(), Some((2, 2)))));
+        s.begin_frame(&[], 1.0);
+        assert!(s.ime_preedit.is_some(), "a composition outlives the frame");
+        s.begin_frame(&[Event::Text("你".into())], 1.0);
+        assert_eq!(s.ime_preedit, None, "a commit ends it");
+        s.begin_frame(&[Event::ImePreedit { text: "a".into(), cursor: None }, Event::ImePreedit { text: String::new(), cursor: None }], 1.0);
+        assert_eq!(s.ime_preedit, None, "an empty preedit clears it");
     }
 }

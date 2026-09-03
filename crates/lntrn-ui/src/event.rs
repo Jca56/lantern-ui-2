@@ -2,6 +2,8 @@
 //! buttons. `lntrn-app` translates winit into these; the shell, keymaps and
 //! every host speak this and nothing else.
 
+use std::path::PathBuf;
+
 use lntrn_math::Vec2;
 
 /// Keyboard modifier state.
@@ -163,12 +165,33 @@ pub enum Event {
     /// Committed text from a key press (already dead-key/IME resolved).
     Text(String),
     Modifiers(Modifiers),
+    /// An input method is composing: show `text` at the caret, with the
+    /// composition caret at `cursor` (byte range into `text`) or hidden.
+    /// Empty `text` ends the composition; the committed result arrives as
+    /// [`Event::Text`].
+    ImePreedit { text: String, cursor: Option<(usize, usize)> },
+    /// A file from outside is being dragged over the window.
+    FileHovered(PathBuf),
+    /// The dragged file left without dropping.
+    FileHoverLeft,
+    /// A file was dropped on the window (one event per file).
+    FileDropped(PathBuf),
 }
 
 impl Event {
     /// Does this event mean "something may look different now"?
     pub fn wants_redraw(&self) -> bool {
-        matches!(self, Event::Resized { .. } | Event::ScaleFactor(_) | Event::Focus(_))
+        matches!(self, Event::Resized { .. } | Event::ScaleFactor(_) | Event::Focus(_) | Event::ImePreedit { .. } | Event::FileHovered(_) | Event::FileHoverLeft | Event::FileDropped(_))
+    }
+
+    /// A key press that means "paste" (Ctrl+V, Shift+Insert): the harness
+    /// pulls the system clipboard in before the rebuild that sees it.
+    pub fn is_paste(&self) -> bool {
+        match self {
+            Event::Key { key: Key::Char(c), pressed: true, mods, .. } => c.eq_ignore_ascii_case(&'v') && *mods == Modifiers::CTRL,
+            Event::Key { key: Key::Insert, pressed: true, mods, .. } => *mods == Modifiers::SHIFT,
+            _ => false,
+        }
     }
 }
 
@@ -201,5 +224,17 @@ mod tests {
         assert_eq!(WheelDelta::Pixels(Vec2::new(3.0, 4.0)).to_pixels(40.0), Vec2::new(3.0, 4.0));
         assert!(Event::Resized { width: 1, height: 1 }.wants_redraw());
         assert!(!Event::PointerLeft.wants_redraw());
+        assert!(Event::FileDropped(PathBuf::from("/tmp/a.png")).wants_redraw());
+    }
+
+    #[test]
+    fn paste_keys() {
+        let key = |key, mods| Event::Key { key, pressed: true, repeat: false, mods };
+        assert!(key(Key::Char('v'), Modifiers::CTRL).is_paste());
+        assert!(key(Key::Char('V'), Modifiers::CTRL).is_paste(), "shifted letter still counts");
+        assert!(key(Key::Insert, Modifiers::SHIFT).is_paste());
+        assert!(!key(Key::Char('v'), Modifiers::NONE).is_paste());
+        assert!(!key(Key::Char('c'), Modifiers::CTRL).is_paste());
+        assert!(!Event::Key { key: Key::Char('v'), pressed: false, repeat: false, mods: Modifiers::CTRL }.is_paste(), "releases do not paste");
     }
 }

@@ -5,14 +5,14 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use lntrn_core::{log_error, log_info};
-use lntrn_math::Vec2;
+use lntrn_math::{Rect, Vec2};
 use lntrn_render::wgpu;
 use lntrn_render::{DrawList, Gpu, Images, RenderGraph, TexId};
 use lntrn_text::TextEngine;
 use lntrn_ui::persist;
 use lntrn_ui::{CursorIcon, Event, Host, Modifiers, ResizeEdge, Shell, WindowCommand, WindowState};
 use winit::application::ApplicationHandler;
-use winit::dpi::LogicalSize;
+use winit::dpi::{LogicalSize, PhysicalPosition, PhysicalSize};
 use winit::event::{StartCause, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
@@ -116,6 +116,8 @@ struct Win {
     window: Arc<Window>,
     gfx: Gfx,
     cursor: CursorIcon,
+    /// Where the input method was last told the caret is.
+    ime: Option<Rect>,
 }
 
 struct App<H: AppHost> {
@@ -189,7 +191,7 @@ impl<H: AppHost> App<H> {
         let mut gfx = Gfx::new(gpu, surface, size.width, size.height, &self.text);
         self.host.init_gpu(&gfx.gpu, gfx.surface.format(), &mut gfx.images);
         log_info!("window: {}x{} @ {:.2}x", size.width, size.height, self.scale);
-        self.win = Some(Win { window, gfx, cursor: CursorIcon::Default });
+        self.win = Some(Win { window, gfx, cursor: CursorIcon::Default, ime: None });
     }
 
     /// Rebuild the UI from the pending events (possibly more than once),
@@ -213,6 +215,16 @@ impl<H: AppHost> App<H> {
         if out.cursor != win.cursor {
             win.cursor = out.cursor;
             win.window.set_cursor(cursor_icon(out.cursor));
+        }
+        // Input methods follow the focused text widget's caret.
+        if out.ime != win.ime {
+            if out.ime.is_some() != win.ime.is_some() {
+                win.window.set_ime_allowed(out.ime.is_some());
+            }
+            if let Some(r) = out.ime {
+                win.window.set_ime_cursor_area(PhysicalPosition::new(r.min.x, r.min.y), PhysicalSize::new(r.width(), r.height()));
+            }
+            win.ime = out.ime;
         }
         match out.window_command {
             Some(WindowCommand::Drag) => {

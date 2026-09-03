@@ -9,6 +9,7 @@ use lntrn_text::TextEngine;
 use lntrn_ui::{Event, Shell, ShellOutput, WindowState};
 
 use crate::app::{AppHost, RenderCx};
+use crate::clipboard;
 
 /// A popup closing or a value committing may ask for one more rebuild; this
 /// caps how many happen back to back before we present.
@@ -49,6 +50,12 @@ impl Gfx {
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn rebuild<H: AppHost>(gfx: &mut Gfx, host: &mut H, shell: &mut Shell<H>, text: &mut TextEngine, draw: &mut DrawList, events: &[Event], scale: f64, ws: WindowState) -> (ShellOutput, bool) {
     let window_rect = gfx.window_rect();
+    // A paste is coming: bring the system clipboard in first.
+    if events.iter().any(Event::is_paste)
+        && let Some(text) = clipboard::read()
+    {
+        shell.state.clipboard = text;
+    }
     let mut evs: &[Event] = events;
     let mut quit = false;
     let mut command = None;
@@ -74,6 +81,10 @@ pub(crate) fn rebuild<H: AppHost>(gfx: &mut Gfx, host: &mut H, shell: &mut Shell
         }
     }
     let out = out.expect("at least one rebuild");
+    // A widget copied: push it out to the system.
+    if shell.state.take_clipboard_dirty() && !clipboard::write(&shell.state.clipboard) {
+        log_trace!("clipboard: no system clipboard, kept in-app");
+    }
     (ShellOutput { quit, window_command: command, ..out }, again)
 }
 

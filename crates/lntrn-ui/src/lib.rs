@@ -27,6 +27,7 @@ pub mod icons;
 pub mod id;
 pub mod keymap;
 pub mod memory;
+pub mod menu;
 pub mod paint;
 pub mod panel;
 pub mod persist;
@@ -56,6 +57,6 @@ pub use state::{CursorIcon, History, KeyPress, Snapshot, UiState};
 pub use theme::{Metrics, Theme};
 pub use titlebar::{ResizeEdge, WindowCommand};
 pub use toasts::Toast;
-pub use ui::{FILL, KeyStep, Response, Sense, Ui};
+pub use ui::{DropZone, FILL, KeyStep, Response, Sense, Ui};
 /// Re-exported: the handle [`Ui::image`] draws.
 pub use lntrn_render::ImageHandle;

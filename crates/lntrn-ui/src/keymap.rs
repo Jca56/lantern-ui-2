@@ -153,6 +153,16 @@ impl KeyConfig {
         None
     }
 
+    /// The label of the first binding that fires `action` (`Ctrl+O`), for
+    /// showing beside a menu row. A binding matches when its action id is
+    /// the same and every override it sets is set the same on `action`.
+    pub fn hint_for(&self, action: &Action) -> Option<String> {
+        self.maps
+            .iter()
+            .flat_map(|m| m.items.iter())
+            .find(|item| item.op == action.id && item.overrides.iter().all(|(k, v)| action.arg(k) == Some(v)))
+            .map(|item| item.trigger.label())
+    }
 }
 
 #[cfg(test)]
@@ -201,5 +211,20 @@ mod tests {
         assert!(Trigger::button(MouseButton::Left, Modifiers::NONE).matches(&click));
         assert_eq!(Trigger::key(Key::Char('s'), Modifiers::CTRL | Modifiers::SHIFT).label(), "Ctrl+Shift+S");
         assert_eq!(Trigger::button(MouseButton::Right, Modifiers::NONE).label(), "Right Click");
+    }
+
+    #[test]
+    fn hints_for_menu_rows() {
+        let k = sample();
+        assert_eq!(k.hint_for(&Action::new("ed.undo")).as_deref(), Some("Ctrl+Z"));
+        assert_eq!(k.hint_for(&Action::new("ed.redo")).as_deref(), Some("Ctrl+Shift+Z"));
+        assert_eq!(k.hint_for(&Action::new("nothing")), None);
+        // Overrides must agree: the add menu's binding is not a hint for another menu.
+        let add = Action::new("wm.call_menu").with("menu", Value::Str("add".into()));
+        assert_eq!(k.hint_for(&add).as_deref(), Some("Shift+A"));
+        let file = Action::new("wm.call_menu").with("menu", Value::Str("file".into()));
+        assert_eq!(k.hint_for(&file), None);
+        // The first map with a match wins (object's Tab before mesh's).
+        assert_eq!(k.hint_for(&Action::new("mode_set").with("mode", Value::Enum(0))).as_deref(), Some("Tab"));
     }
 }

@@ -2,7 +2,7 @@
 
 use lntrn_math::Vec2;
 use lntrn_ui::{Event, Key, Modifiers, MouseButton, WheelDelta};
-use winit::event::{ElementState, MouseScrollDelta, WindowEvent};
+use winit::event::{ElementState, Ime, MouseScrollDelta, WindowEvent};
 use winit::keyboard::{Key as WKey, NamedKey};
 
 /// Translate one window event. Tracks modifier and pointer state in place so
@@ -64,6 +64,16 @@ pub fn window_event(ev: &WindowEvent, mods: &mut Modifiers, pointer: &mut Vec2) 
             // Text arrives alongside the press; the UI gets both, key first.
             Event::Key { key, pressed, repeat: event.repeat, mods: *mods }
         }
+        WindowEvent::Ime(ime) => match ime {
+            Ime::Preedit(text, cursor) => Event::ImePreedit { text: text.clone(), cursor: *cursor },
+            Ime::Commit(text) => Event::Text(text.clone()),
+            // Whatever was composing is gone with the input method.
+            Ime::Disabled => Event::ImePreedit { text: String::new(), cursor: None },
+            Ime::Enabled => return None,
+        },
+        WindowEvent::HoveredFile(path) => Event::FileHovered(path.clone()),
+        WindowEvent::HoveredFileCancelled => Event::FileHoverLeft,
+        WindowEvent::DroppedFile(path) => Event::FileDropped(path.clone()),
         _ => return None,
     })
 }

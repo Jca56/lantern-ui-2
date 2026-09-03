@@ -9,8 +9,9 @@ use lntrn_text::TextEngine;
 
 use crate::event::{Event, MouseButton};
 use crate::file_browser::FileBrowser;
-use crate::host::{AreaCx, Capture, Host, HostCx, ShellRequest};
+use crate::host::{AreaCx, Capture, Host, HostCx, MenuItem, ShellRequest};
 use crate::id::WidgetId;
+use crate::menu::MenuState;
 use crate::popups::{self, Popup, dispatch};
 use crate::prefs::Prefs;
 use crate::screen::{AreaId, Axis, Screen};
@@ -33,6 +34,21 @@ pub struct ShellOutput {
     /// Rebuild again after this many seconds even without input (an
     /// animation is running).
     pub wake_after: Option<f64>,
+    /// A text widget has keyboard focus and its caret is here (physical
+    /// pixels): allow input methods and put their window beside it. `None`
+    /// turns them off.
+    pub ime: Option<Rect>,
+}
+
+/// Rows without a hint of their own get the host's key binding for their
+/// action.
+fn fill_hints<H: Host>(host: &H, items: &mut [MenuItem]) {
+    for it in items {
+        if it.hint.is_none() && !it.separator && it.sub.is_empty() {
+            it.hint = host.key_hint(&it.action);
+        }
+        fill_hints(host, &mut it.sub);
+    }
 }
 
 /// Facts about the window the shell cannot know on its own.
@@ -97,7 +113,11 @@ impl<H: Host> Shell<H> {
 
     /// Open the host's named menu at `at`. Unknown names open nothing.
     pub fn open_menu(&mut self, host: &H, name: &str, at: Vec2) {
-        self.popup = host.menu(name).map(|menu| Popup::Menu { title: menu.title, items: menu.items, pos: at });
+        self.popup = host.menu(name).map(|menu| {
+            let mut items = menu.items;
+            fill_hints(host, &mut items);
+            Popup::Menu(MenuState::new(name, &menu.title, items, at))
+        });
         self.state.request_rebuild = true;
     }
 
@@ -168,12 +188,17 @@ impl<H: Host> Shell<H> {
         let edge_cursor = self.state.cursor_icon;
         let title = host.title();
         let status = host.status();
-        let (area_rect, title_cmd, open_menu) = self.title_bar(draw, text, &theme, m, window, ws, &title, &status, host.title_menus());
-        window_command = window_command.or(title_cmd);
-        if let Some((name, at)) = open_menu {
+        let tb = self.title_bar(draw, text, &theme, m, window, ws, &title, &status, host.title_menus());
+        window_command = window_command.or(tb.command);
+        if let Some((name, at)) = tb.open_menu {
+            self.open_menu(host, &name, at);
+        } else if let Some((name, at)) = tb.hovered_menu
+            && matches!(&self.popup, Some(Popup::Menu(open)) if open.name != name)
+        {
+            // Sliding along the title bar with a menu open switches menus.
             self.open_menu(host, &name, at);
         }
-        let areas_window = area_rect;
+        let areas_window = tb.rest;
         self.screen.layout(areas_window, m.header_h, m.sep);
 
         // ---- separators -------------------------------------------------
@@ -354,6 +379,15 @@ impl<H: Host> Shell<H> {
         }
         self.draw_toasts(draw, text, &theme, m, window);
 
+        // ---- files dropped from outside that no widget took ----------------
+        let dropped = self.state.take_dropped_files();
+        if !dropped.is_empty() {
+            let area = if self.state.pointer_in_window { self.screen.area_at(pointer) } else { None };
+            let editor = area.and_then(|a| self.screen.area(a)).map(|a| a.editor);
+            host.dropped(&dropped, area, editor, &mut HostCx { pointer, requests: &mut requests });
+            self.state.request_rebuild = true;
+        }
+
         // ---- keys no widget consumed go to the host -----------------------
         if self.popup.is_none() && !captured {
             let leftover: Vec<_> = self.state.keys.drain(..).collect();
@@ -413,6 +447,6 @@ impl<H: Host> Shell<H> {
         } else {
             sep_cursor.unwrap_or(self.state.cursor_icon)
         };
-        ShellOutput { cursor, rebuild_again: self.state.request_rebuild, clear: theme.bg, window_command, quit, wake_after: self.state.wake_after }
+        ShellOutput { cursor, rebuild_again: self.state.request_rebuild, clear: theme.bg, window_command, quit, wake_after: self.state.wake_after, ime: self.state.ime_rect }
     }
 }

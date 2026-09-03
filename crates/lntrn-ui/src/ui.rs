@@ -4,6 +4,8 @@
 //! [`crate::paint`], keyboard focus in [`crate::focus`], the widgets in
 //! [`crate::widgets`].
 
+use std::path::PathBuf;
+
 use lntrn_math::{Color, Rect, Vec2};
 use lntrn_render::{DrawList, ImageHandle};
 use lntrn_text::{GlyphQuad, TextEngine};
@@ -55,6 +57,15 @@ impl Default for WidgetId {
     fn default() -> Self {
         WidgetId::ROOT
     }
+}
+
+/// What a drop zone saw this frame (see [`Ui::drop_zone`]).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DropZone {
+    /// Files from outside are being dragged over it: light it up.
+    pub hovering: bool,
+    /// Files dropped on it this frame.
+    pub files: Vec<PathBuf>,
 }
 
 pub(crate) struct RowState {
@@ -370,6 +381,17 @@ impl<'a> Ui<'a> {
         }
         r.focused = st.focus == Some(id);
         r
+    }
+
+    /// Let `rect` receive files dragged in from outside the window. The
+    /// first zone under the pointer takes a drop; whatever no zone takes
+    /// reaches [`crate::Host::dropped`]. The pointer is only as current
+    /// during an outside drag as the window system keeps it.
+    pub fn drop_zone(&mut self, rect: Rect) -> DropZone {
+        let over = self.state.pointer_in_window && rect.intersection(&self.clip).contains(self.state.pointer);
+        let hovering = over && self.state.hovering_files;
+        let files = if over && !self.state.dropped_files.is_empty() { self.state.take_dropped_files() } else { Vec::new() };
+        DropZone { hovering, files }
     }
 
     /// Base color for a raised control in its current role (pressed is

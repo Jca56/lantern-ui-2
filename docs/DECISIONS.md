@@ -202,3 +202,31 @@ color left the theme. A host that wants more colors keeps its own `props!`
 struct and shows it in its Preferences editor beside the shell's `Prefs`.
 The focus outline and the context menu's default outline are `theme.focus`;
 a context menu may set its own `outline`.
+
+## U013 — The system clipboard through wl-clipboard, for now
+**Status:** Accepted (Alva, 2026-09-03)
+**Decision:** `lntrn_app::clipboard` spawns `wl-copy` and `wl-paste` when
+they are on the PATH under Wayland: a read before any rebuild that carries
+a paste key, a write after any rebuild in which a widget copied. Without
+the tools the clipboard stays in-app. The widgets and the shell never know
+which; they talk to `UiState::clipboard` only.
+**Why:** The Lantern-DE apps speak `zwlr_data_control_v1` through the
+`wayland-client` crate, which D001 rules out here. A from-scratch
+data-control client over the Wayland socket is the planned replacement;
+it slots in behind the same two functions.
+**Rejected:** A crate. A second Wayland connection now (a day's work that
+would delay the widgets every app is waiting for).
+
+## U014 — Files from outside and input methods travel the event vocabulary
+**Status:** Accepted (2026-09-03)
+**Decision:** `Event::FileHovered` / `FileHoverLeft` / `FileDropped` and
+`Event::ImePreedit` join the vocabulary. A `Ui::drop_zone` under the
+pointer takes a drop; what no zone takes reaches `Host::dropped` with the
+area under the pointer. A composition shows inline at the focused
+widget's caret; the shell reports the caret rect so the harness can place
+the input method's window.
+**Known limit:** winit 0.30 delivers file drops on X11 only, and even
+there without pointer updates during the drag, so drop zones and area
+routing are best-effort until winit (or our own harness) does better on
+Wayland. The tests cover the whole path so it lights up unchanged when it
+does.

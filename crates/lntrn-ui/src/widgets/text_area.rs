@@ -8,7 +8,7 @@ use crate::event::Key;
 use crate::state::{CursorIcon, Snapshot};
 use crate::ui::{FILL, Sense, Ui};
 use crate::widgets::TextResponse;
-use crate::widgets::text_field::{Edit, byte_at_x, clipboard_key, insert_typed, next_boundary, prev_boundary, take_edits, x_at};
+use crate::widgets::text_field::{Edit, byte_at_x, clipboard_key, insert_typed, next_boundary, prev_boundary, take_edits, with_preedit, x_at};
 
 /// The row (index into `rows`) a caret at byte `b` is on: the last row that
 /// starts at or before it, so a caret at a soft wrap shows on the next row.
@@ -224,11 +224,20 @@ impl Ui<'_> {
                 self.text.line_ranges(value, &style, width as f32, &mut rows);
                 *self.state.floats(id, [-1.0; 4]) = [-1.0; 4];
             }
-            // ---- keep the caret in view ----
             let te = self.state.text_edit(id);
             te.cursor = te.cursor.min(value.len());
             te.anchor = te.anchor.min(value.len());
-            let y = row_of(&rows, te.cursor) as f64 * lh;
+        }
+        // While an input method composes, its text shows at the caret and
+        // the rows follow the shown text.
+        let te = self.state.text_edit(id).clone();
+        let (shown, caret, pre) = with_preedit(value, te.cursor, if r.focused { self.state.ime_preedit.as_ref() } else { None });
+        if pre.is_some() {
+            self.text.line_ranges(&shown, &style, width as f32, &mut rows);
+        }
+        if r.focused {
+            // ---- keep the caret in view ----
+            let y = row_of(&rows, caret) as f64 * lh;
             if y < scroll {
                 scroll = y;
             }
@@ -249,8 +258,7 @@ impl Ui<'_> {
         let clip = inner.intersection(&self.clip());
         self.draw.push_clip(clip);
         let origin = Vec2::new(inner.min.x, inner.min.y - scroll);
-        let te = self.state.text_edit(id).clone();
-        if r.focused && te.has_selection() {
+        if r.focused && pre.is_none() && te.has_selection() {
             let (s0, s1) = te.selection();
             for (i, &(rs, re)) in rows.iter().enumerate() {
                 let (rs, re) = (rs as usize, re as usize);
@@ -261,7 +269,7 @@ impl Ui<'_> {
                 if y + lh < clip.min.y || y > clip.max.y {
                     continue;
                 }
-                self.text.advances(&value[rs..re], &style, &mut adv);
+                self.text.advances(&shown[rs..re], &style, &mut adv);
                 let x0 = origin.x + x_at(&adv, s0.max(rs) - rs);
                 let mut x1 = origin.x + x_at(&adv, s1.min(re) - rs);
                 if s1 > re {
@@ -270,14 +278,30 @@ impl Ui<'_> {
                 self.draw.rect(Rect::new(Vec2::new(x0, y), Vec2::new(x1.max(x0 + 1.0), y + lh)), self.theme.selection);
             }
         }
-        self.text_at(value, &style, origin, width, self.theme.text);
+        self.text_at(&shown, &style, origin, width, self.theme.text);
+        if let Some((p0, p1)) = pre {
+            // The composition, underlined on every row it touches until it commits.
+            for (i, &(rs, re)) in rows.iter().enumerate() {
+                let (rs, re) = (rs as usize, re as usize);
+                if re <= p0 || rs >= p1 {
+                    continue;
+                }
+                self.text.advances(&shown[rs..re], &style, &mut adv);
+                let x0 = origin.x + x_at(&adv, p0.max(rs) - rs);
+                let x1 = origin.x + x_at(&adv, p1.min(re) - rs);
+                let uy = origin.y + i as f64 * lh + lh - self.m.px(3.0);
+                self.draw.rect(Rect::new(Vec2::new(x0, uy), Vec2::new(x1.max(x0 + 1.0), uy + self.m.px(2.0))), self.theme.accent);
+            }
+        }
         if r.focused {
-            let row = row_of(&rows, te.cursor);
+            let row = row_of(&rows, caret);
             let (rs, re) = (rows[row].0 as usize, rows[row].1 as usize);
-            self.text.advances(&value[rs..re], &style, &mut adv);
-            let cx = (origin.x + x_at(&adv, te.cursor - rs)).round();
+            self.text.advances(&shown[rs..re], &style, &mut adv);
+            let cx = (origin.x + x_at(&adv, caret - rs)).round();
             let cy = origin.y + row as f64 * lh;
-            self.draw.rect(Rect::new(Vec2::new(cx, cy), Vec2::new(cx + self.m.px(2.0), cy + lh)), self.theme.text);
+            let caret_rect = Rect::new(Vec2::new(cx, cy), Vec2::new(cx + self.m.px(2.0), cy + lh));
+            self.draw.rect(caret_rect, self.theme.text);
+            self.state.ime_rect = Some(caret_rect);
         }
         self.draw.pop_clip();
 

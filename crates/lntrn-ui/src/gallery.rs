@@ -1,6 +1,13 @@
 //! Every widget, live, for poking at.
 
+use std::path::PathBuf;
+
+use lntrn_math::Rect;
+
 use crate::ui::Ui;
+
+/// The gallery's tabs, in order.
+pub const TABS: [&str; 5] = ["Controls", "Knobs", "Text", "Lists", "Pictures"];
 
 #[derive(Clone, Debug)]
 pub struct GalleryState {
@@ -24,6 +31,8 @@ pub struct GalleryState {
     /// A picture the host uploaded (see `lntrn-demo`), shown on its tab.
     pub image: Option<crate::ImageHandle>,
     pub image_name: String,
+    /// Files dropped on the Pictures tab, for the host to open.
+    pub dropped: Vec<PathBuf>,
 }
 
 impl Default for GalleryState {
@@ -47,6 +56,7 @@ impl Default for GalleryState {
             tree_pick: 0,
             image: None,
             image_name: String::new(),
+            dropped: Vec::new(),
             notes: "Several lines of text.\nClick to place the caret, drag to select, double-click a word.\nUp and Down remember the column; Enter breaks a line; Ctrl+Enter commits.\n\nWrapping happens at the box edge, so a long line like this one folds onto the next row when the area is narrow enough to need it.".to_owned(),
         }
     }
@@ -55,7 +65,7 @@ impl Default for GalleryState {
 const CHOICES: [&str; 4] = ["Solid", "Wireframe", "Material Preview", "Rendered"];
 
 pub fn draw(ui: &mut Ui, g: &mut GalleryState) {
-    ui.tabs(&mut g.tab, &["Controls", "Knobs", "Text", "Lists", "Pictures"]);
+    ui.tabs(&mut g.tab, &TABS);
     ui.space(ui.m.gap);
     match g.tab {
         0 => controls(ui, g),
@@ -67,8 +77,17 @@ pub fn draw(ui: &mut Ui, g: &mut GalleryState) {
 }
 
 fn pictures(ui: &mut Ui, g: &mut GalleryState) {
+    // The whole tab takes pictures dragged in from outside.
+    let zone_rect = Rect::new(ui.cursor(), ui.clip().max);
+    let zone = ui.drop_zone(zone_rect);
+    if !zone.files.is_empty() {
+        g.dropped = zone.files;
+    }
+    if zone.hovering {
+        ui.draw.stroke_rect(zone_rect, ui.m.px(3.0), ui.m.radius, ui.theme.accent);
+    }
     ui.scroll_area("pictures", None, |ui| {
-        ui.heading("Pictures");
+        ui.heading(if zone.hovering { "Drop it here" } else { "Pictures" });
         match g.image {
             Some(img) => {
                 ui.label_dim(&format!("{} · {}×{}", g.image_name, img.width, img.height));
@@ -83,7 +102,7 @@ fn pictures(ui: &mut Ui, g: &mut GalleryState) {
                 ui.image(img, lntrn_math::Vec2::new(crate::ui::FILL, 0.0));
             }
             None => {
-                ui.paragraph("No picture yet. The host uploads one with Images::add and hands the gallery its handle; the demo makes one and can open a PNG or JPEG from the File menu.");
+                ui.paragraph("No picture yet. The host uploads one with Images::add and hands the gallery its handle; the demo makes one and can open a PNG or JPEG from the File menu, or one dropped on this tab.");
             }
         }
     });

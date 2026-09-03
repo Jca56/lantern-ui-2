@@ -12,6 +12,7 @@
 use std::time::{Duration, Instant};
 
 use lntrn_core::log_info;
+use lntrn_math::Rect;
 use lntrn_render::wgpu;
 use lntrn_render::{DrawList, Gpu, GpuError, Images};
 use lntrn_text::TextEngine;
@@ -44,6 +45,9 @@ pub struct EmbedOutput {
     pub wake_after: Option<f64>,
     /// The UI asked to close (a Quit action).
     pub quit: bool,
+    /// A text widget has focus and its caret is here (physical pixels):
+    /// tell the owner's input method. `None` means no text focus.
+    pub ime: Option<Rect>,
 }
 
 pub struct Embedded<H: AppHost> {
@@ -109,7 +113,7 @@ impl<H: AppHost> Embedded<H> {
             self.dirty = true;
         }
         self.wake = out.wake_after.map(|s| Instant::now() + Duration::from_secs_f64(s));
-        EmbedOutput { cursor: out.cursor, wake_after: out.wake_after, quit: out.quit }
+        EmbedOutput { cursor: out.cursor, wake_after: out.wake_after, quit: out.quit, ime: out.ime }
     }
 
     pub fn host(&self) -> &H {

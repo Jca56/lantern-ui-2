@@ -4,6 +4,8 @@
 //! asks the [`Host`]. An app implements this one trait and hands itself to
 //! [`crate::Shell::frame`] every rebuild.
 
+use std::path::PathBuf;
+
 use lntrn_math::Vec2;
 use lntrn_props::{Reflect, Value};
 
@@ -105,18 +107,55 @@ impl Dialog {
 pub struct MenuItem {
     pub label: String,
     pub action: Action,
-    /// A setting's current state, shown as the row lit or not.
+    /// A setting's current state, shown as a check mark.
     pub checked: Option<bool>,
+    /// A greyed row does nothing when chosen.
+    pub enabled: bool,
+    /// Text at the right edge, normally the key binding. The shell fills
+    /// it in from [`Host::key_hint`] when `None`.
+    pub hint: Option<String>,
+    /// Rows of a submenu; when there are any, the row opens it beside the
+    /// menu instead of running `action`.
+    pub sub: Vec<MenuItem>,
+    /// A thin rule instead of a row.
+    pub separator: bool,
 }
 
 impl MenuItem {
     pub fn new(label: &str, action: Action) -> Self {
-        Self { label: label.to_owned(), action, checked: None }
+        Self { label: label.to_owned(), action, checked: None, enabled: true, hint: None, sub: Vec::new(), separator: false }
+    }
+
+    /// A thin rule between groups of rows.
+    pub fn separator() -> Self {
+        Self { separator: true, ..Self::new("", Action::default()) }
+    }
+
+    /// A row that opens `items` beside the menu.
+    pub fn sub(label: &str, items: Vec<MenuItem>) -> Self {
+        Self { sub: items, ..Self::new(label, Action::default()) }
     }
 
     /// A row that shows a setting and flips it.
     pub fn checked(mut self, on: bool) -> Self {
         self.checked = Some(on);
+        self
+    }
+
+    pub fn enabled(mut self, on: bool) -> Self {
+        self.enabled = on;
+        self
+    }
+
+    /// Greyed out: shown, but does nothing.
+    pub fn disabled(self) -> Self {
+        self.enabled(false)
+    }
+
+    /// Text at the right edge, instead of the key binding the shell
+    /// would look up.
+    pub fn hint(mut self, text: &str) -> Self {
+        self.hint = Some(text.to_owned());
         self
     }
 
@@ -285,6 +324,13 @@ pub trait Host {
         let _ = query;
         Vec::new()
     }
+    /// The key binding that fires `action`, as text for the right edge of
+    /// a menu row (`Ctrl+O`). A host with a [`crate::keymap::KeyConfig`]
+    /// returns `keys.hint_for(action)`.
+    fn key_hint(&self, action: &Action) -> Option<String> {
+        let _ = action;
+        None
+    }
 
     /// Does this editor paint its own body (a 3D view)? Then the shell
     /// leaves the body unfilled for it.
@@ -338,5 +384,12 @@ pub trait Host {
     /// title, tools and items up to date with what changed.
     fn refresh_context_menu(&mut self, menu: &mut ContextMenu) {
         let _ = menu;
+    }
+    /// Files dropped on the window from outside that no
+    /// [`crate::Ui::drop_zone`] took. `area` and `editor` are what was
+    /// under the pointer when the window system last reported it, which
+    /// not every window system keeps current during an outside drag.
+    fn dropped(&mut self, paths: &[PathBuf], area: Option<AreaId>, editor: Option<Self::Editor>, cx: &mut HostCx) {
+        let _ = (paths, area, editor, cx);
     }
 }

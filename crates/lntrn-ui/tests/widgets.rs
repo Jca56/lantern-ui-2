@@ -204,7 +204,7 @@ fn shell_menus_keys_and_palette() {
     h.release();
     h.shell_settle(&mut shell, &mut host, 3);
     assert!(shell.popup_open(), "menu open");
-    let row = h.rect_of(WidgetId::ROOT.with("popup").with("popup").with_index(0).with("Do Thing")).expect("menu row");
+    let row = h.rect_of(WidgetId::ROOT.with("popup").with("menu").with("item").with_index(0)).expect("menu row");
     h.move_to(row.center());
     h.press();
     h.shell_frame(&mut shell, &mut host);

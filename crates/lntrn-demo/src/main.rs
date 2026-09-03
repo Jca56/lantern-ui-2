@@ -1,18 +1,22 @@
 //! The widget gallery, and a small complete [`Host`] to copy from.
 //! `cargo run -p lntrn-demo`.
 //!
-//! Three editors (Gallery, Preferences, Notes), a File menu on the title
-//! bar, a command palette (F3), a keymap, a right-click context menu with a
-//! tool strip, a bar, a submenu, a live property panel and a custom row —
-//! every door into the shell, opened once.
+//! Five editors (Gallery, Preferences, Notes, Key Bindings, Empty), File
+//! and Help menus on the title bar (with rules, a greyed row, a submenu
+//! and key hints), a command palette (F3), a keymap, a right-click context
+//! menu with a tool strip, a bar, a submenu, a live property panel and a
+//! custom row, and files dropped from outside — every door into the
+//! shell, opened once.
+
+use std::path::{Path, PathBuf};
 
 use lntrn_app::lntrn_render::{Gpu, Images};
 use lntrn_app::{AppConfig, AppHost, run, wgpu};
 use lntrn_image::Image;
 use lntrn_props::{Reflect, Value, props};
-use lntrn_ui::gallery::{self, GalleryState};
+use lntrn_ui::gallery::{self, GalleryState, TABS};
 use lntrn_ui::keymap::CTX_WINDOW;
-use lntrn_ui::{Action, AreaCx, Axis, ContextMenu, Dialog, Host, HostCx, Icon, Item, Key, KeyConfig, KeyItem, KeyPress, Menu, MenuItem, Modifiers, Shell, ShellRequest, Tool, Trigger, Ui, actions, prefs};
+use lntrn_ui::{Action, AreaCx, AreaId, Axis, ContextMenu, Dialog, Host, HostCx, Icon, Item, Key, KeyConfig, KeyItem, KeyPress, Menu, MenuItem, Modifiers, Shell, ShellRequest, Tool, Trigger, Ui, actions, prefs};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Editor {
@@ -100,9 +104,35 @@ impl Demo {
             ffm: false,
             pending_image: None,
             keys,
-            notes: "Right-click the gallery for a context menu. F3 opens the palette. Tab walks the widgets.".to_owned(),
+            notes: "Right-click the gallery for a context menu. F3 opens the palette. Tab walks the widgets. Drop a file on the window to open it.".to_owned(),
             status: "Ctrl+F: File · F3: palette · Ctrl+Space: maximize · Ctrl+Q: quit".to_owned(),
         }
+    }
+
+    /// Decode a picture file for the GPU to pick up after the rebuild.
+    fn open_picture(&mut self, path: &str, cx: &mut HostCx) {
+        match std::fs::read(path).map_err(|e| e.to_string()).and_then(|bytes| lntrn_image::decode(&bytes).map_err(|e| format!("{e:?}"))) {
+            Ok(img) => {
+                self.status = format!("Decoded {} ({}×{})", path, img.width, img.height);
+                self.pending_image = Some((path.to_owned(), img));
+                self.gallery.tab = 4;
+            }
+            Err(e) => cx.request(ShellRequest::Dialog(Dialog::notice("Could not open the picture", &format!("{path}\n{e}")))),
+        }
+    }
+
+    /// A file from outside: pictures go to the gallery, anything else
+    /// becomes the notes.
+    fn open_dropped(&mut self, path: &Path, cx: &mut HostCx) {
+        let ext = path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).unwrap_or_default();
+        if matches!(ext.as_str(), "png" | "jpg" | "jpeg") {
+            self.open_picture(&path.display().to_string(), cx);
+        } else {
+            self.notes = std::fs::read_to_string(path).unwrap_or_else(|e| format!("could not read: {e}"));
+            self.status = format!("Opened {}", path.display());
+        }
+        cx.toast(&format!("Dropped {}", path.file_name().and_then(|n| n.to_str()).unwrap_or("a file")));
+        cx.rebuild();
     }
 
     /// The gallery's context menu, built from its live state.
@@ -169,8 +199,11 @@ impl Host for Demo {
                 vec![
                     MenuItem::new("Open…", Action::new("demo.open")),
                     MenuItem::new("Open Picture…", Action::new("demo.open_image")),
-                    MenuItem::new("Save As…", Action::new("demo.save_as")),
+                    MenuItem::separator(),
+                    MenuItem::new("Save As…", Action::new("demo.save_as")).enabled(!self.notes.is_empty()),
+                    MenuItem::separator(),
                     MenuItem::new("Reset Gallery…", Action::new("demo.reset_ask")),
+                    MenuItem::separator(),
                     MenuItem::new("Quit", Action::new(actions::QUIT)),
                 ],
             ),
@@ -179,6 +212,8 @@ impl Host for Demo {
                 vec![
                     MenuItem::new("Command Palette", Action::new(actions::PALETTE)),
                     MenuItem::new("Maximize Area", Action::new(actions::MAXIMIZE)),
+                    MenuItem::sub("Gallery Tab", TABS.iter().enumerate().map(|(i, name)| MenuItem::new(name, Action::new("demo.tab").with("tab", Value::I64(i as i64))).checked(self.gallery.tab == i)).collect()),
+                    MenuItem::separator(),
                     MenuItem::pref_toggle("Focus Follows Mouse", "focus_follows_mouse", self.ffm),
                     MenuItem::new("About", Action::new("demo.about")),
                 ],
@@ -192,10 +227,17 @@ impl Host for Demo {
         PALETTE.iter().filter(|(id, label)| q.is_empty() || id.contains(&q) || label.to_lowercase().contains(&q)).map(|(id, label)| ((*id).to_owned(), (*label).to_owned())).collect()
     }
 
+    fn key_hint(&self, action: &Action) -> Option<String> {
+        self.keys.hint_for(action)
+    }
+
     fn draw_body(&mut self, editor: Editor, ui: &mut Ui, cx: &mut AreaCx<()>) -> bool {
         match editor {
             Editor::Gallery => {
                 gallery::draw(ui, &mut self.gallery);
+                for p in std::mem::take(&mut self.gallery.dropped) {
+                    self.open_dropped(&p, &mut cx.host());
+                }
                 let over_popup = ui.state.popup.is_some_and(|(r, _)| r.contains(ui.state.pointer));
                 if ui.state.right_pressed && ui.clip().contains(ui.state.pointer) && !over_popup {
                     let menu = self.gallery_menu(ui.state.pointer);
@@ -242,17 +284,7 @@ impl Host for Demo {
                 cx.toast(&self.status.clone());
             }
             "demo.open_image" => cx.request(ShellRequest::PathDialog { action: Action::new("demo.image_opened"), save: false, suggest: home.join("Pictures").join("picture.png").display().to_string() }),
-            "demo.image_opened" => {
-                let p = path();
-                match std::fs::read(&p).map_err(|e| e.to_string()).and_then(|bytes| lntrn_image::decode(&bytes).map_err(|e| format!("{e:?}"))) {
-                    Ok(img) => {
-                        self.status = format!("Decoded {} ({}×{})", p, img.width, img.height);
-                        self.pending_image = Some((p, img));
-                        self.gallery.tab = 4;
-                    }
-                    Err(e) => cx.request(ShellRequest::Dialog(Dialog::notice("Could not open the picture", &format!("{p}\n{e}")))),
-                }
-            }
+            "demo.image_opened" => self.open_picture(&path(), cx),
             "demo.save_as" => cx.request(ShellRequest::PathDialog { action: Action::new("demo.saved"), save: true, suggest: home.join("notes.txt").display().to_string() }),
             "demo.saved" => {
                 self.status = match std::fs::write(path(), &self.notes) {
@@ -304,6 +336,12 @@ impl Host for Demo {
 
     fn refresh_context_menu(&mut self, menu: &mut ContextMenu) {
         *menu = self.gallery_menu(menu.pos).keep_view_of(menu);
+    }
+
+    fn dropped(&mut self, paths: &[PathBuf], _area: Option<AreaId>, _editor: Option<Editor>, cx: &mut HostCx) {
+        if let Some(p) = paths.first() {
+            self.open_dropped(p, cx);
+        }
     }
 }
 

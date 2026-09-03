@@ -112,6 +112,20 @@ bytes (`persist::save`); the area tree is one line of text
 (`Screen::describe`). `lntrn_app::run` loads both from
 `~/.config/<app_id>/` and writes them back on exit.
 
+**The outside world** — three things cross the window boundary, all in
+the event vocabulary so the harness and the shell stay apart. The
+*clipboard*: widgets copy into `UiState::set_clipboard` and paste from
+`UiState::clipboard`; the harness pulls the system clipboard in before a
+rebuild that carries a paste key and pushes ours out after a copy
+(`lntrn_app::clipboard`, through `wl-copy` and `wl-paste` when present,
+U013). *Input methods*: a composition arrives as `Event::ImePreedit`, the
+focused text widget shows it inline at its caret with an underline and
+reports the caret rect (`ShellOutput::ime`) so the harness can place the
+candidate window; the committed text is an ordinary `Event::Text`.
+*Files from outside*: `Event::FileHovered` / `FileDropped`; a
+`Ui::drop_zone` under the pointer takes them, anything left reaches
+`Host::dropped` with the area under the pointer.
+
 ## 4. The frame
 
 ```

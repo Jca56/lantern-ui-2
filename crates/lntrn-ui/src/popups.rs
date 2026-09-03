@@ -9,13 +9,14 @@ use lntrn_props::Value;
 use crate::context_menu::{self, ContextMenu};
 use crate::event::Key;
 use crate::file_browser::{self, FileBrowser, Verdict};
-use crate::host::{Action, Dialog, Host, HostCx, MenuItem, ShellRequest, actions};
+use crate::host::{Action, Dialog, Host, HostCx, ShellRequest, actions};
+use crate::menu::{self, MenuState};
 use crate::state::CursorIcon;
 use crate::ui::{FILL, Sense, Ui};
 
 #[derive(Clone, Debug)]
 pub enum Popup {
-    Menu { title: String, items: Vec<MenuItem>, pos: Vec2 },
+    Menu(MenuState),
     Palette { query: String, selected: usize },
     /// A file browser that runs `action` with the chosen `path`.
     Path { action: Action, browser: FileBrowser },
@@ -55,6 +56,9 @@ pub(crate) fn draw<H: Host>(ui: &mut Ui, popup: &mut Popup, window: Rect, palett
     if let Popup::Context(menu) = popup {
         return context_menu::draw(ui, menu, window, host, cx);
     }
+    if let Popup::Menu(menu) = popup {
+        return menu::draw(ui, menu, window, host, cx);
+    }
     let mut out = PopupResult::default();
     if ui.state.take_key(|k| k.key == Key::Escape).is_some() {
         out.close = true;
@@ -62,13 +66,6 @@ pub(crate) fn draw<H: Host>(ui: &mut Ui, popup: &mut Popup, window: Rect, palett
     let layer = 1;
     let m = ui.m;
     let rect = match popup {
-        Popup::Menu { items, pos, .. } => {
-            let w = m.px(260.0);
-            let h = m.widget_h * (items.len() as f64 + 1.0) + m.gap * 3.0;
-            let x = pos.x.min(window.max.x - w).max(window.min.x);
-            let y = pos.y.min(window.max.y - h).max(window.min.y);
-            Rect::from_min_size(Vec2::new(x, y), Vec2::new(w, h))
-        }
         Popup::Palette { .. } => {
             let w = m.px(600.0).min(window.width() - m.pad * 2.0);
             let h = m.widget_h * 13.0 + m.gap * 4.0;
@@ -87,18 +84,15 @@ pub(crate) fn draw<H: Host>(ui: &mut Ui, popup: &mut Popup, window: Rect, palett
             let h = m.gap * 2.0 + m.pad * 2.0 + heading_h + m.gap + body_h + m.gap * 2.0 + m.widget_h;
             Rect::from_min_size((window.center() - Vec2::new(w, h) * 0.5).round(), Vec2::new(w, h))
         }
-        Popup::Context(_) => unreachable!(),
+        Popup::Menu(_) | Popup::Context(_) => unreachable!(),
     };
     ui.state.keep_popup(rect, layer);
     if ui.state.pressed && !rect.contains(ui.state.press_pos) {
-        if matches!(popup, Popup::Dialog(_)) {
-            // Modal: the press goes nowhere and the dialog stays.
-            ui.state.press_claimed = true;
-        } else {
+        // The press goes nowhere. A dialog is modal and stays; the palette
+        // and the path dialog close.
+        ui.state.press_claimed = true;
+        if !matches!(popup, Popup::Dialog(_)) {
             out.close = true;
-            if !matches!(popup, Popup::Menu { .. }) {
-                ui.state.press_claimed = true;
-            }
         }
     }
 
@@ -117,17 +111,6 @@ pub(crate) fn draw<H: Host>(ui: &mut Ui, popup: &mut Popup, window: Rect, palett
     ui.set_avail_width(content.width());
 
     match popup {
-        Popup::Menu { title, items, .. } => {
-            ui.label_dim(title);
-            for (i, item) in items.iter().enumerate() {
-                ui.push_index(i);
-                if ui.selectable(&item.label, item.checked.unwrap_or(false)).clicked {
-                    dispatch(host, &item.action, cx);
-                    out.close = true;
-                }
-                ui.pop_id();
-            }
-        }
         Popup::Palette { query, selected } => {
             let field = ui.id("query");
             if ui.state.focus.is_none() {
@@ -219,7 +202,7 @@ pub(crate) fn draw<H: Host>(ui: &mut Ui, popup: &mut Popup, window: Rect, palett
                 out.close = true;
             }
         }
-        Popup::Context(_) => unreachable!(),
+        Popup::Menu(_) | Popup::Context(_) => unreachable!(),
     }
 
     ui.pop_id();

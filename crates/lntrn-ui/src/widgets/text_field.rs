@@ -1,6 +1,8 @@
 //! Single-line text editing: caret, selection, keyboard navigation, and
 //! horizontal scrolling so the caret stays visible.
 
+use std::borrow::Cow;
+
 use lntrn_math::{Rect, Vec2};
 
 use crate::event::Key;
@@ -91,6 +93,24 @@ pub(crate) fn insert_typed(state: &mut crate::state::UiState, id: WidgetId, valu
     true
 }
 
+/// The text as shown while an input method composes: the preedit spliced
+/// in at the caret. Returns the shown text, where the caret is in it, and
+/// the preedit's byte range in it.
+pub(crate) fn with_preedit<'a>(value: &'a str, cursor: usize, preedit: Option<&(String, Option<(usize, usize)>)>) -> (Cow<'a, str>, usize, Option<(usize, usize)>) {
+    let cursor = cursor.min(value.len());
+    match preedit {
+        Some((t, c)) if !t.is_empty() => {
+            let mut s = String::with_capacity(value.len() + t.len());
+            s.push_str(&value[..cursor]);
+            s.push_str(t);
+            s.push_str(&value[cursor..]);
+            let caret = cursor + c.map_or(t.len(), |(a, _)| a.min(t.len()));
+            (Cow::Owned(s), caret, Some((cursor, cursor + t.len())))
+        }
+        _ => (Cow::Borrowed(value), cursor, None),
+    }
+}
+
 /// Ctrl+C / Ctrl+X / Ctrl+V on the text `id` edits. Returns `true` when
 /// the text changed. `multiline` keeps newlines in pasted text.
 pub(crate) fn clipboard_key(state: &mut crate::state::UiState, id: WidgetId, key: Key, value: &mut String, multiline: bool) -> bool {
@@ -98,13 +118,13 @@ pub(crate) fn clipboard_key(state: &mut crate::state::UiState, id: WidgetId, key
     match key {
         Key::Char('c') => {
             if s1 > s0 {
-                state.clipboard = value[s0..s1].to_owned();
+                state.set_clipboard(&value[s0..s1]);
             }
             false
         }
         Key::Char('x') => {
             if s1 > s0 {
-                state.clipboard = value[s0..s1].to_owned();
+                state.set_clipboard(&value[s0..s1]);
                 value.replace_range(s0..s1, "");
                 let te = state.text_edit(id);
                 te.cursor = s0;
@@ -249,11 +269,20 @@ impl Ui<'_> {
             if out.changed {
                 self.text.advances(value, &style, &mut adv);
             }
-            // Keep the caret in view.
             let te = self.state.text_edit(id);
             te.cursor = te.cursor.min(value.len());
             te.anchor = te.anchor.min(value.len());
-            let cx = x_at(&adv, te.cursor);
+        }
+
+        // While an input method composes, its text shows at the caret.
+        let te = self.state.text_edit(id).clone();
+        let (shown, caret, pre) = with_preedit(value, te.cursor, if r.focused { self.state.ime_preedit.as_ref() } else { None });
+        if pre.is_some() {
+            self.text.advances(&shown, &style, &mut adv);
+        }
+        if r.focused {
+            // Keep the caret in view.
+            let cx = x_at(&adv, caret);
             let w = inner.width().max(1.0);
             if cx - scroll > w - 2.0 {
                 scroll = cx - w + 2.0;
@@ -262,7 +291,7 @@ impl Ui<'_> {
                 scroll = cx;
             }
             scroll = scroll.max(0.0);
-            te.scroll = scroll;
+            self.state.text_edit(id).scroll = scroll;
         }
 
         // Draw.
@@ -276,20 +305,25 @@ impl Ui<'_> {
         let lh = style.line_height() as f64;
         let ty = (rect.center().y - lh * 0.5).round();
         let origin = Vec2::new(inner.min.x - scroll, ty);
-        if r.focused {
-            let te = self.state.text_edit(id).clone();
-            if te.has_selection() {
-                let (s0, s1) = te.selection();
-                let x0 = origin.x + x_at(&adv, s0);
-                let x1 = origin.x + x_at(&adv, s1);
-                self.draw.rect(Rect::new(Vec2::new(x0, ty), Vec2::new(x1, ty + lh)), self.theme.selection);
-            }
+        if r.focused && pre.is_none() && te.has_selection() {
+            let (s0, s1) = te.selection();
+            let x0 = origin.x + x_at(&adv, s0);
+            let x1 = origin.x + x_at(&adv, s1);
+            self.draw.rect(Rect::new(Vec2::new(x0, ty), Vec2::new(x1, ty + lh)), self.theme.selection);
         }
-        self.text_at(value, &style, origin, 1.0e6, self.theme.text);
+        self.text_at(&shown, &style, origin, 1.0e6, self.theme.text);
+        if let Some((p0, p1)) = pre {
+            // The composition, underlined until it commits.
+            let (x0, x1) = (origin.x + x_at(&adv, p0), origin.x + x_at(&adv, p1));
+            let uy = ty + lh - self.m.px(3.0);
+            self.draw.rect(Rect::new(Vec2::new(x0, uy), Vec2::new(x1.max(x0 + 1.0), uy + self.m.px(2.0))), self.theme.accent);
+        }
         if r.focused {
-            let cx = (origin.x + x_at(&adv, self.state.text_edit(id).cursor)).round();
+            let cx = (origin.x + x_at(&adv, caret)).round();
             let cw = self.m.px(2.0);
-            self.draw.rect(Rect::new(Vec2::new(cx, ty), Vec2::new(cx + cw, ty + lh)), self.theme.text);
+            let caret_rect = Rect::new(Vec2::new(cx, ty), Vec2::new(cx + cw, ty + lh));
+            self.draw.rect(caret_rect, self.theme.text);
+            self.state.ime_rect = Some(caret_rect);
         }
         self.draw.pop_clip();
         out
@@ -320,5 +354,22 @@ mod tests {
         assert_eq!(byte_at_x(&adv, 12.0), 1);
         assert_eq!(byte_at_x(&adv, 26.0), 3);
         assert_eq!(byte_at_x(&adv, -5.0), 0);
+    }
+
+    #[test]
+    fn preedit_splices_in_at_the_caret() {
+        let none = with_preedit("abc", 1, None);
+        assert_eq!((none.0.as_ref(), none.1, none.2), ("abc", 1, None));
+        assert!(matches!(none.0, Cow::Borrowed(_)), "no composition: nothing allocated");
+        let empty = with_preedit("abc", 1, Some(&(String::new(), None)));
+        assert_eq!(empty.2, None, "an empty preedit is no preedit");
+        let (shown, caret, pre) = with_preedit("abc", 1, Some(&("ni".to_owned(), Some((1, 1)))));
+        assert_eq!(shown, "anibc");
+        assert_eq!(caret, 2, "one byte into the composition");
+        assert_eq!(pre, Some((1, 3)));
+        let (_, caret, _) = with_preedit("abc", 1, Some(&("ni".to_owned(), None)));
+        assert_eq!(caret, 3, "no composition caret: after it");
+        let (shown, caret, pre) = with_preedit("ab", 9, Some(&("x".to_owned(), Some((5, 5)))));
+        assert_eq!((shown.as_ref(), caret, pre), ("abx", 3, Some((2, 3))), "offsets clamp");
     }
 }

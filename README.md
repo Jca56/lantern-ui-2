@@ -31,7 +31,9 @@ Split and join areas from the `⋮` menu in any header, drag the gaps, drag
 a header onto another area to swap them, Ctrl+Space to maximize one.
 Right-click the gallery, press F3 for the palette, Tab through everything,
 edit the theme live in Preferences (it is saved for next time), rebind
-keys in Key Bindings, open a picture from the File menu.
+keys in Key Bindings, open a picture from the File menu or drop one on
+the window. Slide along the title bar to switch menus; arrow keys walk
+them.
 
 ## What is in the box
 
@@ -40,11 +42,12 @@ keys in Key Bindings, open a picture from the File menu.
   selectables, text fields, a multi-line text area with undo, colour
   picker, tree view, progress bars, collapsing sections, scroll areas,
   columns, pictures, props-driven panels, a keymap editor.
-- **Shell**: title bar with menus, resizable and swappable areas, maximize,
+- **Shell**: title bar with menus (rules, greyed rows, submenus, key
+  hints, keyboard navigation), resizable and swappable areas, maximize,
   command palette, file browser, modal dialogs, toasts, context menus with
-  tool strips, keyboard focus with rings and scroll-into-view, an in-app
-  clipboard, timed redraws for animation, preferences and layout saved
-  between runs.
+  tool strips, keyboard focus with rings and scroll-into-view, the system
+  clipboard, input methods, files dropped from outside, timed redraws for
+  animation, preferences and layout saved between runs.
 - **Harnesses**: a winit window (`lntrn_app::run`) and an embedded view
   for plugin editors (`lntrn_app::Embedded`) that draws into a window the
   owner supplies.
