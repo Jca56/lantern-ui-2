@@ -91,6 +91,12 @@ impl Ui<'_> {
         let id = self.id(label);
         let w = if self.in_row() { self.m.px(120.0) } else { FILL };
         let rect = self.alloc(Vec2::new(w, self.m.widget_h));
+        self.drag_value_in(id, rect, label, value, step, range, decimals)
+    }
+
+    /// [`Self::drag_value`] into a rect of the caller's.
+    #[allow(clippy::too_many_arguments)]
+    pub fn drag_value_in(&mut self, id: crate::WidgetId, rect: Rect, label: &str, value: &mut f64, step: f64, range: Option<(f64, f64)>, decimals: usize) -> bool {
         let (min, max) = range.unwrap_or((f64::NEG_INFINITY, f64::INFINITY));
         if let Some(done) = self.number_editing(id, rect, *value) {
             if let Some(v) = done {
@@ -201,7 +207,8 @@ impl Ui<'_> {
     }
 }
 
-fn clamp_step(v: f64, min: f64, max: f64, step: f64) -> f64 {
+/// Snap `v` to `step` from `min` (no snapping when `step` is 0) and clamp.
+pub(crate) fn clamp_step(v: f64, min: f64, max: f64, step: f64) -> f64 {
     let v = if step > 0.0 { min + ((v - min) / step).round() * step } else { v };
     v.clamp(min, max)
 }

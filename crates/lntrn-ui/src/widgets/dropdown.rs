@@ -111,7 +111,7 @@ impl Ui<'_> {
         None
     }
 
-    fn draw_chevron(&mut self, rect: Rect) {
+    pub(crate) fn draw_chevron(&mut self, rect: Rect) {
         let s = self.m.px(6.0);
         let c = Vec2::new(rect.max.x - self.m.pad - s, rect.center().y - s * 0.25);
         let w = self.m.px(2.0);

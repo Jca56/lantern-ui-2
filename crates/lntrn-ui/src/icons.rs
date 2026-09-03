@@ -32,6 +32,89 @@ pub enum Icon {
     Minus,
     /// A picture: a frame with a sun and a hill.
     Image,
+    // ---- the general set (drawn in `icons_ui`) ----
+    Search,
+    Close,
+    Check,
+    Folder,
+    File,
+    Gear,
+    Undo,
+    Redo,
+    Play,
+    Pause,
+    Stop,
+    Record,
+    Copy,
+    Paste,
+    Trash,
+    Warning,
+    Info,
+    ChevronLeft,
+    ChevronRight,
+    Lock,
+    Eye,
+    Link,
+    Pin,
+    /// Three lines: a menu.
+    Menu,
+    Save,
+    /// A funnel.
+    Filter,
+    Star,
+}
+
+impl Icon {
+    /// Every icon, for a gallery.
+    pub const ALL: [Icon; 47] = [
+        Icon::Vertex,
+        Icon::Edge,
+        Icon::Face,
+        Icon::Solid,
+        Icon::Wire,
+        Icon::Grid,
+        Icon::Frame,
+        Icon::EditMode,
+        Icon::Plus,
+        Icon::Minus,
+        Icon::Camera,
+        Icon::Move,
+        Icon::Rotate,
+        Icon::Scale,
+        Icon::Object,
+        Icon::Mirror,
+        Icon::Up,
+        Icon::Down,
+        Icon::Material,
+        Icon::Image,
+        Icon::Search,
+        Icon::Close,
+        Icon::Check,
+        Icon::Folder,
+        Icon::File,
+        Icon::Gear,
+        Icon::Undo,
+        Icon::Redo,
+        Icon::Play,
+        Icon::Pause,
+        Icon::Stop,
+        Icon::Record,
+        Icon::Copy,
+        Icon::Paste,
+        Icon::Trash,
+        Icon::Warning,
+        Icon::Info,
+        Icon::ChevronLeft,
+        Icon::ChevronRight,
+        Icon::Lock,
+        Icon::Eye,
+        Icon::Link,
+        Icon::Pin,
+        Icon::Menu,
+        Icon::Save,
+        Icon::Filter,
+        Icon::Star,
+    ];
 }
 
 pub fn draw(d: &mut DrawList, rect: Rect, icon: Icon, color: Color, stroke: f64) {
@@ -191,5 +274,25 @@ pub fn draw(d: &mut DrawList, rect: Rect, icon: Icon, color: Color, stroke: f64)
             d.line(p(1.0, -0.5), p(1.0, 0.7), stroke, color);
             d.line(p(1.0, 0.7), Vec2::new(body.max.x, body.max.y - body.height() * 0.3), stroke, color);
         }
+        other => crate::icons_ui::draw(d, c, s, other, color, stroke),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_icon_draws_something() {
+        let mut d = DrawList::new();
+        let rect = Rect::from_xywh(0.0, 0.0, 40.0, 40.0);
+        for icon in Icon::ALL {
+            let before = d.vertex_count();
+            draw(&mut d, rect, icon, Color::WHITE, 2.0);
+            assert!(d.vertex_count() > before, "{icon:?} drew nothing");
+        }
+        let mut seen = Icon::ALL.to_vec();
+        seen.dedup();
+        assert_eq!(seen.len(), Icon::ALL.len(), "no icon listed twice");
     }
 }

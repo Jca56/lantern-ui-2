@@ -37,13 +37,16 @@ them.
 
 ## What is in the box
 
-- **Widgets**: labels, headings, paragraphs, buttons, icon buttons,
-  toggles, tabs, sliders, drag numbers, knobs, dropdowns, menu buttons,
-  selectables, text fields, a multi-line text area with undo, colour
-  picker, tree view, tables with sortable and resizable columns whose
-  cells are widgets, virtual lists (ten thousand rows cost the same as
-  ten), scroll areas that go down or both ways, progress bars, collapsing
-  sections, columns, pictures, props-driven panels, a keymap editor.
+- **Widgets**: labels, headings, paragraphs, buttons, icon buttons (47
+  procedural icons, no icon font), toggles, radio groups, tabs, sliders,
+  range sliders, vertical faders, an XY pad, drag numbers, spinners,
+  knobs, dropdowns, an editable combo box, menu buttons, selectables,
+  text fields (placeholders, passwords), a multi-line text area with
+  undo, colour picker, tree view, tables with sortable and resizable
+  columns whose cells are widgets, virtual lists (ten thousand rows cost
+  the same as ten), scroll areas that go down or both ways, progress
+  bars, collapsing sections, columns, pictures, props-driven panels, a
+  keymap editor.
 - **Shell**: title bar with menus (rules, greyed rows, submenus, key
   hints, keyboard navigation), resizable and swappable areas, maximize,
   command palette, file browser, modal dialogs (with the host's own

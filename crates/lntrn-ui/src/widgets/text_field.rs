@@ -21,6 +21,18 @@ pub struct TextResponse {
     pub focused: bool,
 }
 
+/// How a text field shows itself.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct TextOpts<'a> {
+    /// Dim text shown while the field is empty.
+    pub placeholder: &'a str,
+    /// Dots instead of the text, for secrets.
+    pub password: bool,
+}
+
+/// What a password field shows per character.
+const MASK: &str = "•";
+
 pub(crate) fn prev_boundary(s: &str, i: usize) -> usize {
     s[..i].chars().next_back().map_or(0, |c| i - c.len_utf8())
 }
@@ -150,13 +162,47 @@ pub(crate) fn clipboard_key(state: &mut crate::state::UiState, id: WidgetId, key
 impl Ui<'_> {
     /// Editable single-line text. Click to focus, drag to select.
     pub fn text_field(&mut self, label: &str, value: &mut String) -> TextResponse {
+        self.text_field_with(label, value, TextOpts::default())
+    }
+
+    /// A text field that shows `placeholder`, dim, while it is empty.
+    pub fn text_field_hint(&mut self, label: &str, value: &mut String, placeholder: &str) -> TextResponse {
+        self.text_field_with(label, value, TextOpts { placeholder, password: false })
+    }
+
+    /// A text field that shows dots instead of what is typed.
+    pub fn password_field(&mut self, label: &str, value: &mut String, placeholder: &str) -> TextResponse {
+        self.text_field_with(label, value, TextOpts { placeholder, password: true })
+    }
+
+    pub fn text_field_with(&mut self, label: &str, value: &mut String, opts: TextOpts) -> TextResponse {
         let id = self.id(label);
         let rect = self.alloc(Vec2::new(FILL, self.m.widget_h));
-        self.text_edit_core(id, rect, value)
+        self.text_edit_core_with(id, rect, value, opts)
     }
 
     /// The editor behind text fields and number typing. Draws into `rect`.
     pub fn text_edit_core(&mut self, id: WidgetId, rect: Rect, value: &mut String) -> TextResponse {
+        self.text_edit_core_with(id, rect, value, TextOpts::default())
+    }
+
+    /// Pen positions per character of `value` as drawn: of the dots when
+    /// `password`, so carets and clicks land on the right character.
+    fn text_advances(&mut self, value: &str, password: bool, style: &lntrn_text::TextStyle, adv: &mut Vec<(u32, f32)>) {
+        if !password {
+            self.text.advances(value, style, adv);
+            return;
+        }
+        let n = value.chars().count();
+        let mut masked = Vec::new();
+        self.text.advances(&MASK.repeat(n), style, &mut masked);
+        adv.clear();
+        adv.extend(value.char_indices().enumerate().map(|(i, (b, _))| (b as u32, x_at(&masked, i * MASK.len()) as f32)));
+        adv.push((value.len() as u32, x_at(&masked, n * MASK.len()) as f32));
+    }
+
+    /// [`Self::text_edit_core`] with a placeholder or password dots.
+    pub fn text_edit_core_with(&mut self, id: WidgetId, rect: Rect, value: &mut String, opts: TextOpts) -> TextResponse {
         let r = self.interact(id, rect, Sense::FOCUS);
         self.focusable(id, rect);
         if r.hovered {
@@ -165,7 +211,7 @@ impl Ui<'_> {
         let style = self.text_style();
         let inner = Rect::new(Vec2::new(rect.min.x + self.m.pad, rect.min.y), Vec2::new(rect.max.x - self.m.pad, rect.max.y));
         let mut adv = Vec::new();
-        self.text.advances(value, &style, &mut adv);
+        self.text_advances(value, opts.password, &style, &mut adv);
 
         let mut out = TextResponse { focused: r.focused, ..TextResponse::default() };
         let mut scroll = self.state.text_edit(id).scroll;
@@ -267,7 +313,7 @@ impl Ui<'_> {
                 }
             }
             if out.changed {
-                self.text.advances(value, &style, &mut adv);
+                self.text_advances(value, opts.password, &style, &mut adv);
             }
             let te = self.state.text_edit(id);
             te.cursor = te.cursor.min(value.len());
@@ -276,7 +322,7 @@ impl Ui<'_> {
 
         // While an input method composes, its text shows at the caret.
         let te = self.state.text_edit(id).clone();
-        let (shown, caret, pre) = with_preedit(value, te.cursor, if r.focused { self.state.ime_preedit.as_ref() } else { None });
+        let (shown, caret, pre) = with_preedit(value, te.cursor, if r.focused && !opts.password { self.state.ime_preedit.as_ref() } else { None });
         if pre.is_some() {
             self.text.advances(&shown, &style, &mut adv);
         }
@@ -311,7 +357,15 @@ impl Ui<'_> {
             let x1 = origin.x + x_at(&adv, s1);
             self.draw.rect(Rect::new(Vec2::new(x0, ty), Vec2::new(x1, ty + lh)), self.theme.selection);
         }
-        self.text_at(&shown, &style, origin, 1.0e6, self.theme.text);
+        if opts.password {
+            let dots = MASK.repeat(value.chars().count());
+            self.text_at(&dots, &style, origin, 1.0e6, self.theme.text);
+        } else {
+            self.text_at(&shown, &style, origin, 1.0e6, self.theme.text);
+        }
+        if value.is_empty() && pre.is_none() && !opts.placeholder.is_empty() {
+            self.text_at(opts.placeholder, &style, origin, 1.0e6, self.theme.text_dim);
+        }
         if let Some((p0, p1)) = pre {
             // The composition, underlined until it commits.
             let (x0, x1) = (origin.x + x_at(&adv, p0), origin.x + x_at(&adv, p1));
