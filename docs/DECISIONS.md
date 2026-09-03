@@ -370,3 +370,22 @@ state); restoring secondary windows between runs (later, once an app
 wants it).
 **Learned:** The embedded harness stays single-view and drops
 `OpenWindow` on the floor.
+
+## U022 — Rich text is a small markdown, flowed word by word
+**Status:** Accepted (2026-09-03)
+**Decision:** `lntrn_ui::rich` parses `#`/`##` headings, paragraphs,
+`-`/`1.` lists, `**bold**`, `*italic*`, `` `code` ``, `[label](target)`
+links, fenced code and `---` rules into blocks of spans, and
+`Ui::rich_text` lays them out itself: each word is measured in its span's
+style (`lntrn-text` shapes and caches per style) and placed left to
+right, wrapping at the width; links are `interact`ed as click targets
+and come back in `RichResponse::link_clicked`. Dialog bodies are rich
+text. A measuring pass (`rich_text_height`) sizes dialogs before they
+draw.
+**Why:** Help panes and about boxes want headings, emphasis, lists and
+links, not a text engine that understands markup; word flow over
+per-style measurement gives mixed styles on one line with the engine as
+it is.
+**Rejected:** A full CommonMark parser (nesting, tables, images: none
+needed yet); styled runs inside `lntrn-text` layout (a bigger change to
+the engine for the same result on screen).

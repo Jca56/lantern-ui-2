@@ -409,7 +409,7 @@ impl Host for Demo {
                 }
                 None => cx.toast("Nothing to redo"),
             },
-            "demo.about" => cx.request(ShellRequest::Dialog(Dialog::notice("Lantern UI 0.2", "Rust, wgpu and winit. Everything else is ours: math, reflection, text, rendering, widgets."))),
+            "demo.about" => cx.request(ShellRequest::Dialog(Dialog::notice("Lantern UI 0.2", "Rust, **wgpu** and **winit**. Everything else is ours:\n\n- math, reflection, pictures\n- text, rendering, widgets\n\nSee `docs/ARCHITECTURE.md` and *DECISIONS.md* for the why."))),
             other => self.status = format!("unknown action {other}"),
         }
         cx.rebuild();

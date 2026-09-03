@@ -76,6 +76,8 @@ pub struct GalleryState {
     /// The picture was dragged off its tab: the host, which has the
     /// pixels, starts the drag out of the window.
     pub drag_picture: bool,
+    /// The last link clicked in the rich text sample.
+    pub last_link: String,
     pub rows: Vec<TableRow>,
     pub picked_row: Option<usize>,
     /// The pick in the ten-thousand-row list.
@@ -123,6 +125,7 @@ impl Default for GalleryState {
             image_name: String::new(),
             dropped: Vec::new(),
             drag_picture: false,
+            last_link: String::new(),
             rows: sample_rows(),
             picked_row: None,
             big_pick: None,
@@ -268,6 +271,13 @@ fn text(ui: &mut Ui, g: &mut GalleryState) {
          rebuild, and a rebuild only happens when an input event arrives. Idle costs nothing.",
     );
     ui.separator();
+    ui.heading("Rich text");
+    let r = ui.rich_text(RICH_SAMPLE);
+    if let Some(link) = r.link_clicked {
+        g.last_link = link;
+    }
+    ui.label_dim(&if g.last_link.is_empty() { "Click a link.".to_owned() } else { format!("Last link: {}", g.last_link) });
+    ui.separator();
     ui.heading("Weights");
     let body = ui.text_style();
     let w = ui.avail_width();
@@ -282,3 +292,15 @@ fn text(ui: &mut Ui, g: &mut GalleryState) {
         let _ = w;
     }
 }
+
+/// What `Ui::rich_text` renders: the whole small markdown in one go.
+const RICH_SAMPLE: &str = "## A small markdown\n\
+Paragraphs wrap at the width, with **bold**, *italic* and `code` runs, and a link to [the docs](docs/ARCHITECTURE.md). \
+A second line of the same paragraph joins it.\n\n\
+- Bullets, each its own item\n\
+- With **bold** inside, too\n\n\
+1. Numbered\n\
+2. In order\n\n\
+```\nlet shell = Shell::new(Editor::Main);\nlntrn_app::run(config, host, shell);\n```\n\n\
+---\n\
+Unclosed *markers stay visible, and a lone 2 * 3 keeps its stars.";

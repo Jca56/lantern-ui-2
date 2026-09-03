@@ -52,7 +52,8 @@ them.
   hints, keyboard navigation), resizable and swappable areas that stack
   editors as tabs, maximize,
   command palette, file browser, modal dialogs (with the host's own
-  widgets inside when it wants them), toasts, context menus with
+  widgets inside when it wants them), toasts, rich text (a small markdown
+  for help panes and dialog bodies), context menus with
   tool strips, keyboard focus with rings and scroll-into-view, the system
   clipboard (text and pictures), input methods, files dragged in from
   other apps and text, files and pictures dragged out to them, timed redraws for

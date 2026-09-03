@@ -84,7 +84,8 @@ pub(crate) fn draw<H: Host>(ui: &mut Ui, popup: &mut Popup, window: Rect, palett
                 d.height
             } else {
                 let style = ui.text_style();
-                let body_h = if d.body.is_empty() { 0.0 } else { ui.text.measure_wrapped(&d.body, &style, (w - m.gap * 2.0 - m.pad * 2.0) as f32).height as f64 + m.gap };
+                let _ = &style;
+                let body_h = if d.body.is_empty() { 0.0 } else { ui.rich_text_height(&d.body, w - m.gap * 2.0 - m.pad * 2.0) + m.gap };
                 let heading_h = ui.heading_style().line_height() as f64 + m.gap;
                 // With content, a guess until it has been measured once.
                 let content_h = if d.content.is_some() { m.widget_h * 2.0 } else { 0.0 };
@@ -186,7 +187,9 @@ pub(crate) fn draw<H: Host>(ui: &mut Ui, popup: &mut Popup, window: Rect, palett
             ui.set_avail_width(inner.width());
             ui.heading(&d.title);
             if !d.body.is_empty() {
-                ui.paragraph(&d.body);
+                // The body is rich text: an about box gets its headings
+                // and links, a notice its bold word.
+                ui.rich_text(&d.body);
             }
             ui.space(m.gap);
             if let Some(key) = &d.content {
