@@ -1,8 +1,12 @@
 //! PNG decoder: every colour type and bit depth, tRNS, all five filters,
 //! Adam7 interlacing. CRCs, gamma and colour-space chunks are ignored.
-//! 16-bit samples keep their high byte.
+//! 16-bit samples keep their high byte. The writer (`encode`) does RGBA8
+//! with stored deflate blocks.
 
+mod encode;
 mod rows;
+
+pub use encode::{encode, zlib_stored};
 
 use crate::inflate::inflate;
 use crate::{Image, ImageError};

@@ -776,6 +776,7 @@ name = "lntrn-app"
 version = "0.2.0"
 dependencies = [
  "lntrn-core",
+ "lntrn-image",
  "lntrn-math",
  "lntrn-render",
  "lntrn-text",
@@ -847,6 +848,7 @@ name = "lntrn-ui"
 version = "0.2.0"
 dependencies = [
  "lntrn-core",
+ "lntrn-image",
  "lntrn-math",
  "lntrn-props",
  "lntrn-render",

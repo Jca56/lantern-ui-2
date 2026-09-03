@@ -12,6 +12,7 @@ workspace = true
 [dependencies]
 lntrn-core.workspace = true
 lntrn-math.workspace = true
+lntrn-image.workspace = true
 lntrn-props.workspace = true
 lntrn-text.workspace = true
 lntrn-render.workspace = true

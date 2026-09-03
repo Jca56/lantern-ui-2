@@ -301,3 +301,8 @@ clipboard thread stuck for good). The harness therefore idles with a
 far `WaitUntil` deadline instead of `Wait` whenever it has a system
 clipboard to serve; `examples/clipboard_probe.rs` reproduces the hang
 and the cure.
+**Pictures:** the same source and offer carry `image/png`. A host puts an
+`Image` in `UiState::set_clipboard_image` (pushed out through
+`lntrn_image::encode_png`, a stored-deflate writer: exact pixels, no
+compression) or sets `clipboard_image_wanted` and finds the decoded
+picture in `clipboard_image` on the next rebuild.

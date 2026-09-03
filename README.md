@@ -11,7 +11,7 @@ lntrn-app      winit loop, GPU wiring, event translation      (wgpu, winit)
 lntrn-ui       shell, areas, widgets, panels, theme, Host trait
 lntrn-render   wgpu wrapper, render graph, 2D pass, shaders   (wgpu)
 lntrn-text     fonts, shaping, layout, raster, atlas          GPU-free
-lntrn-image    PNG and JPEG decoders                          pure std
+lntrn-image    PNG and JPEG decoders, a PNG writer            pure std
 lntrn-props    reflection: describe a struct once             pure std
 lntrn-core     handles, arenas, chunked vecs, jobs, undo, log pure std
 lntrn-math     f64 vectors, matrices, quaternions, rects      pure std
@@ -53,7 +53,8 @@ them.
   command palette, file browser, modal dialogs (with the host's own
   widgets inside when it wants them), toasts, context menus with
   tool strips, keyboard focus with rings and scroll-into-view, the system
-  clipboard, input methods, files dragged in from other apps, timed redraws for
+  clipboard (text and pictures), input methods, files dragged in from
+  other apps, timed redraws for
   animation (or none, with the reduce-motion preference), a debug overlay
   of what a rebuild costs, preferences and layout saved between runs.
 - **Harnesses**: a winit window (`lntrn_app::run`) and an embedded view

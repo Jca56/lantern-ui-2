@@ -30,6 +30,9 @@ enum Editor {
 
 const EDITORS: [Editor; 5] = [Editor::Gallery, Editor::Preferences, Editor::Notes, Editor::Keys, Editor::Empty];
 
+/// Where the Pictures tab sits in [`TABS`].
+const PICTURES_TAB: usize = 6;
+
 /// Palette entries: (action id, label).
 const PALETTE: [(&str, &str); 11] = [
     ("demo.open", "Open File…"),
@@ -64,6 +67,8 @@ struct Demo {
     status: String,
     /// A decoded picture waiting for the GPU (uploaded in `after_rebuild`).
     pending_image: Option<(String, Image)>,
+    /// The picture the gallery shows, kept for copying.
+    picture: Option<Image>,
     /// Snapshots of the gallery before each action that changes it.
     undo: Undo<GalleryState>,
 }
@@ -112,6 +117,7 @@ impl Demo {
         Self {
             gallery: GalleryState::default(),
             pending_image: None,
+            picture: None,
             undo: Undo::default(),
             keys,
             notes_name: "Notes".to_owned(),
@@ -127,7 +133,7 @@ impl Demo {
             Ok(img) => {
                 self.status = format!("Decoded {} ({}×{})", path, img.width, img.height);
                 self.pending_image = Some((path.to_owned(), img));
-                self.gallery.tab = 6;
+                self.gallery.tab = PICTURES_TAB;
             }
             Err(e) => cx.request(ShellRequest::Dialog(Dialog::notice("Could not open the picture", &format!("{path}\n{e}")))),
         }
@@ -274,6 +280,23 @@ impl Host for Demo {
     fn draw_body(&mut self, editor: Editor, ui: &mut Ui, cx: &mut AreaCx<()>) -> bool {
         match editor {
             Editor::Gallery => {
+                // The Pictures tab: Ctrl+C copies the picture, Ctrl+V pastes
+                // one, when no text widget has the keys.
+                if self.gallery.tab == PICTURES_TAB && cx.active && ui.state.focus.is_none() {
+                    if let Some(img) = ui.state.clipboard_image.take() {
+                        self.pending_image = Some(("Pasted picture".to_owned(), img));
+                        cx.toast("Pasted a picture");
+                    }
+                    if ui.state.take_key(|k| k.key == Key::Char('c') && k.mods == Modifiers::CTRL).is_some()
+                        && let Some(img) = &self.picture
+                    {
+                        ui.state.set_clipboard_image(img.clone());
+                        cx.toast("Copied the picture");
+                    }
+                    if ui.state.take_key(|k| k.key == Key::Char('v') && k.mods == Modifiers::CTRL).is_some() {
+                        ui.state.clipboard_image_wanted = true;
+                    }
+                }
                 gallery::draw(ui, &mut self.gallery);
                 for p in std::mem::take(&mut self.gallery.dropped) {
                     self.open_dropped(&p, &mut cx.host());
@@ -430,8 +453,10 @@ impl Host for Demo {
 
 impl AppHost for Demo {
     fn init_gpu(&mut self, gpu: &Gpu, _format: wgpu::TextureFormat, images: &mut Images) {
-        self.gallery.image = Some(images.add(gpu, &sample_picture()));
+        let picture = sample_picture();
+        self.gallery.image = Some(images.add(gpu, &picture));
         self.gallery.image_name = "Made from arithmetic".to_owned();
+        self.picture = Some(picture);
     }
 
     fn after_rebuild(&mut self, gpu: &Gpu, images: &mut Images, _shell: &mut Shell<Self>) -> bool {
@@ -443,6 +468,7 @@ impl AppHost for Demo {
             None => images.add(gpu, &img),
         });
         self.gallery.image_name = name;
+        self.picture = Some(img);
         true
     }
 }

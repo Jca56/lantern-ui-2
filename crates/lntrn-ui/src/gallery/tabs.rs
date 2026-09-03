@@ -142,7 +142,7 @@ pub(super) fn pictures(ui: &mut Ui, g: &mut GalleryState) {
         ui.heading(if zone.hovering { "Drop it here" } else { "Pictures" });
         match g.image {
             Some(img) => {
-                ui.label_dim(&format!("{} · {}×{}", g.image_name, img.width, img.height));
+                ui.label_dim(&format!("{} · {}×{} · Ctrl+C copies it, Ctrl+V pastes one", g.image_name, img.width, img.height));
                 ui.label("Fit inside a box, aspect kept, corners rounded:");
                 ui.image_fit(img, Vec2::new(FILL, 320.0));
                 ui.label("At its own size, or as wide as the panel:");

@@ -62,9 +62,12 @@ pub(crate) fn rebuild<H: AppHost>(gfx: &mut Gfx, host: &mut H, shell: &mut Shell
         {
             shell.state.clipboard = text;
         }
+        if std::mem::take(&mut shell.state.clipboard_image_wanted) {
+            shell.state.clipboard_image = clipboard.read_image().and_then(|png| lntrn_image::decode(&png).ok());
+        }
         draw.clear();
         let o = shell.frame(host, evs, window_rect, scale, ws, text, draw);
-        again = o.rebuild_again || shell.state.clipboard_wanted;
+        again = o.rebuild_again || shell.state.clipboard_wanted || shell.state.clipboard_image_wanted;
         quit |= o.quit;
         command = command.or(o.window_command);
         evs = &[];
@@ -84,6 +87,12 @@ pub(crate) fn rebuild<H: AppHost>(gfx: &mut Gfx, host: &mut H, shell: &mut Shell
     // A widget copied: push it out to the system.
     if shell.state.take_clipboard_dirty() && !clipboard.write(&shell.state.clipboard) {
         log_trace!("clipboard: no system clipboard, kept in-app");
+    }
+    if shell.state.take_clipboard_image_dirty()
+        && let Some(img) = &shell.state.clipboard_image
+        && !clipboard.write_image(&lntrn_image::encode_png(img))
+    {
+        log_trace!("clipboard: no system clipboard, picture kept in-app");
     }
     (ShellOutput { quit, window_command: command, ..out }, again)
 }

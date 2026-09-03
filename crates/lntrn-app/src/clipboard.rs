@@ -111,4 +111,29 @@ impl Clipboard {
             false
         }
     }
+
+    /// The system clipboard's picture as PNG bytes, if it holds one.
+    pub fn read_image(&mut self) -> Option<Vec<u8>> {
+        #[cfg(target_os = "linux")]
+        {
+            self.native.as_mut()?.read_image()
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            None
+        }
+    }
+
+    /// Put a PNG on the system clipboard. `false` when it could not be.
+    pub fn write_image(&mut self, png: &[u8]) -> bool {
+        #[cfg(target_os = "linux")]
+        {
+            self.native.as_mut().is_some_and(|n| n.write_image(png))
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = png;
+            false
+        }
+    }
 }

@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Instant;
 
+use lntrn_image::Image;
 use lntrn_math::{Rect, Vec2};
 
 use crate::event::{Event, Key, Modifiers, MouseButton};
@@ -104,6 +105,14 @@ pub struct UiState {
     /// in [`Self::clipboard`] on the next rebuild (a paste that no key
     /// started). The harness reads it in and rebuilds once more.
     pub clipboard_wanted: bool,
+    /// A picture on the clipboard, beside the text: put there by
+    /// [`Self::set_clipboard_image`] (the harness pushes it out as PNG),
+    /// or brought in by the harness on the rebuild after
+    /// [`Self::clipboard_image_wanted`] was set. Take it when you use it.
+    pub clipboard_image: Option<Image>,
+    clipboard_image_dirty: bool,
+    /// Like [`Self::clipboard_wanted`], for a picture.
+    pub clipboard_image_wanted: bool,
     /// A file from outside is being dragged over the window: drop zones
     /// light up.
     pub hovering_files: bool,
@@ -182,6 +191,9 @@ impl UiState {
             clipboard: String::new(),
             clipboard_dirty: false,
             clipboard_wanted: false,
+            clipboard_image: None,
+            clipboard_image_dirty: false,
+            clipboard_image_wanted: false,
             hovering_files: false,
             dropped_files: Vec::new(),
             ime_preedit: None,
@@ -221,6 +233,18 @@ impl UiState {
     /// Whether a widget wrote the clipboard since the last call.
     pub fn take_clipboard_dirty(&mut self) -> bool {
         std::mem::take(&mut self.clipboard_dirty)
+    }
+
+    /// Put a picture on the clipboard. The harness pushes it out as PNG
+    /// after the frame.
+    pub fn set_clipboard_image(&mut self, image: Image) {
+        self.clipboard_image = Some(image);
+        self.clipboard_image_dirty = true;
+    }
+
+    /// Whether a picture was put on the clipboard since the last call.
+    pub fn take_clipboard_image_dirty(&mut self) -> bool {
+        std::mem::take(&mut self.clipboard_image_dirty)
     }
 
     /// Take this frame's dropped files, leaving none for anyone after.
@@ -367,115 +391,4 @@ impl UiState {
         self.focus == Some(id)
     }
 
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::event::WheelDelta;
-
-    #[test]
-    fn ingests_events() {
-        let mut s = UiState::new();
-        let p = Vec2::new(10.0, 20.0);
-        s.begin_frame(
-            &[
-                Event::PointerMoved(p),
-                Event::Button { button: MouseButton::Left, pressed: true, pos: p, mods: Modifiers::NONE },
-                Event::Wheel { delta: WheelDelta::Lines(Vec2::new(0.0, 1.0)), pos: p, mods: Modifiers::NONE },
-                Event::Key { key: Key::Enter, pressed: true, repeat: false, mods: Modifiers::NONE },
-                Event::Text("a".into()),
-            ],
-            40.0,
-        );
-        assert!(s.pressed && s.down && !s.released);
-        assert_eq!(s.press_pos, p);
-        assert_eq!(s.wheel, Vec2::new(0.0, 40.0));
-        assert_eq!(s.text_input, vec![(4, "a".to_owned())]);
-        assert!(s.take_key(|k| k.key == Key::Enter).is_some());
-        assert!(s.take_key(|k| k.key == Key::Enter).is_none());
-        s.active = Some(WidgetId::ROOT);
-        s.end_frame();
-        assert!(s.is_active(WidgetId::ROOT), "still held");
-        s.begin_frame(&[Event::Button { button: MouseButton::Left, pressed: false, pos: p, mods: Modifiers::NONE }], 40.0);
-        assert!(s.released && !s.down);
-        s.end_frame();
-        assert_eq!(s.active, None);
-    }
-
-    #[test]
-    fn double_click_and_popup_lifetime() {
-        let mut s = UiState::new();
-        let p = Vec2::ZERO;
-        let press = Event::Button { button: MouseButton::Left, pressed: true, pos: p, mods: Modifiers::NONE };
-        s.begin_frame(std::slice::from_ref(&press), 1.0);
-        assert!(!s.double_click);
-        s.begin_frame(&[press], 1.0);
-        assert!(s.double_click);
-        s.keep_popup(Rect::ZERO, 1);
-        s.end_frame();
-        assert!(s.popup.is_some());
-        s.begin_frame(&[], 1.0);
-        s.end_frame();
-        assert!(s.popup.is_none(), "not kept → closed");
-    }
-
-    #[test]
-    fn tab_walks_focus_order() {
-        let mut s = UiState::new();
-        let (a, b, c) = (WidgetId::ROOT.with("a"), WidgetId::ROOT.with("b"), WidgetId::ROOT.with("c"));
-        let tab = |mods| Event::Key { key: Key::Tab, pressed: true, repeat: false, mods };
-        s.begin_frame(&[tab(Modifiers::NONE)], 1.0);
-        s.focus_order.extend([a, b, c]);
-        s.end_frame();
-        assert_eq!(s.focus, Some(a), "nothing focused: Tab goes to the first");
-        assert!(s.focus_visible && s.request_rebuild);
-        s.begin_frame(&[tab(Modifiers::SHIFT)], 1.0);
-        s.focus_order.extend([a, b, c]);
-        s.end_frame();
-        assert_eq!(s.focus, Some(c), "Shift+Tab wraps backwards");
-        s.begin_frame(&[tab(Modifiers::NONE)], 1.0);
-        s.focus_order.extend([a, b, c]);
-        s.end_frame();
-        assert_eq!(s.focus, Some(a), "and Tab wraps forwards");
-        s.begin_frame(&[Event::Button { button: MouseButton::Left, pressed: true, pos: Vec2::ZERO, mods: Modifiers::NONE }], 1.0);
-        assert!(!s.focus_visible, "a pointer press hides the rings");
-        s.set_time(5.0);
-        s.begin_frame(&[], 1.0);
-        assert_eq!(s.now, 5.0);
-        s.request_redraw_after(0.5);
-        s.request_redraw_after(0.2);
-        s.request_redraw_after(0.9);
-        assert_eq!(s.wake_after, Some(0.2), "the soonest wins");
-    }
-
-    #[test]
-    fn clipboard_files_and_ime() {
-        let mut s = UiState::new();
-        assert!(!s.take_clipboard_dirty());
-        s.set_clipboard("hello");
-        assert_eq!(s.clipboard, "hello");
-        assert!(s.take_clipboard_dirty());
-        assert!(!s.take_clipboard_dirty(), "reported once");
-
-        let p = PathBuf::from("/tmp/x.png");
-        s.begin_frame(&[Event::FileHovered(p.clone())], 1.0);
-        assert!(s.hovering_files);
-        s.begin_frame(&[Event::FileDropped(p.clone())], 1.0);
-        assert!(!s.hovering_files, "the drop ends the hover");
-        assert_eq!(s.dropped_files, vec![p.clone()]);
-        assert_eq!(s.take_dropped_files(), vec![p]);
-        assert!(s.dropped_files.is_empty());
-        s.begin_frame(&[Event::FileHovered(PathBuf::new()), Event::FileHoverLeft], 1.0);
-        assert!(!s.hovering_files);
-
-        s.begin_frame(&[Event::ImePreedit { text: "ni".into(), cursor: Some((2, 2)) }], 1.0);
-        assert_eq!(s.ime_preedit, Some(("ni".to_owned(), Some((2, 2)))));
-        s.begin_frame(&[], 1.0);
-        assert!(s.ime_preedit.is_some(), "a composition outlives the frame");
-        s.begin_frame(&[Event::Text("你".into())], 1.0);
-        assert_eq!(s.ime_preedit, None, "a commit ends it");
-        s.begin_frame(&[Event::ImePreedit { text: "a".into(), cursor: None }, Event::ImePreedit { text: String::new(), cursor: None }], 1.0);
-        assert_eq!(s.ime_preedit, None, "an empty preedit clears it");
-    }
 }

@@ -21,8 +21,12 @@ use super::ffi::{self, Array, Interface, Lib, Proxy, Queue, op};
 
 /// The text types we give and take, best first.
 const MIMES: [&CStr; 5] = [c"text/plain;charset=utf-8", c"UTF8_STRING", c"text/plain", c"TEXT", c"STRING"];
+/// The picture type we give and take.
+const PNG: &CStr = c"image/png";
 /// How long a paste waits for the other app to write.
 const READ_TIMEOUT: Duration = Duration::from_millis(1500);
+/// Pictures take longer.
+const IMAGE_TIMEOUT: Duration = Duration::from_millis(4000);
 
 /// What the listeners write into. Boxed and handed to libwayland as user
 /// data, so it never moves while a proxy can still fire.
@@ -46,13 +50,19 @@ struct Shared {
     dnd: DndState,
     /// The source we set as the selection while it stands, with its data.
     source: Option<(*mut Proxy, *mut SourceData)>,
-    /// What our source holds, so a paste of our own copy needs no pipe.
-    owned_text: Option<String>,
+    /// What our source holds, so a paste of our own copy needs no pipe:
+    /// text, or a PNG.
+    owned: Option<Owned>,
+}
+
+enum Owned {
+    Text(String),
+    Png(Vec<u8>),
 }
 
 /// What one `wl_data_source` of ours carries.
 struct SourceData {
-    text: String,
+    bytes: Vec<u8>,
     shared: *mut Shared,
 }
 
@@ -254,7 +264,7 @@ unsafe extern "C" fn source_send(data: *mut c_void, _: *mut Proxy, _mime: *const
     unsafe {
         let src = &*(data as *mut SourceData);
         let mut file = File::from_raw_fd(fd);
-        let _ = file.write_all(src.text.as_bytes());
+        let _ = file.write_all(&src.bytes);
     }
 }
 unsafe extern "C" fn source_cancelled(data: *mut c_void, source: *mut Proxy) {
@@ -264,7 +274,7 @@ unsafe extern "C" fn source_cancelled(data: *mut c_void, source: *mut Proxy) {
         let shared = &mut *src.shared;
         if shared.source.is_some_and(|(p, _)| p == source) {
             shared.source = None;
-            shared.owned_text = None;
+            shared.owned = None;
         }
         (shared.lib.marshal)(source, op::SOURCE_DESTROY, null::<Interface>(), shared.version, ffi::MARSHAL_FLAG_DESTROY);
         drop(src);
@@ -291,7 +301,7 @@ impl Clipboard {
             let wrapper = (lib.create_wrapper)(display);
             (lib.set_queue)(wrapper as *mut Proxy, queue);
             let registry = (lib.marshal)(wrapper as *mut Proxy, op::DISPLAY_GET_REGISTRY, &ffi::WL_REGISTRY, 1, 0, null_mut::<Proxy>());
-            let shared = Box::into_raw(Box::new(Shared { lib, display, queue, seat: null_mut(), manager: null_mut(), version: 1, serial: 0, offers: HashMap::new(), selection: None, dnd: DndState::default(), source: None, owned_text: None }));
+            let shared = Box::into_raw(Box::new(Shared { lib, display, queue, seat: null_mut(), manager: null_mut(), version: 1, serial: 0, offers: HashMap::new(), selection: None, dnd: DndState::default(), source: None, owned: None }));
             (lib.add_listener)(registry, &REGISTRY_LISTENER as *const RegistryListener as *const c_void, shared as *mut c_void);
             let mut me = Clipboard { shared, wrapper, registry, keyboard: null_mut(), device: null_mut() };
             if (lib.roundtrip_queue)(display, queue) < 0 {
@@ -337,34 +347,38 @@ impl Clipboard {
         self.poll();
         // SAFETY: `shared` lives as long as `self`.
         let shared = unsafe { &mut *self.shared };
-        if let Some(text) = &shared.owned_text {
+        if let Some(Owned::Text(text)) = &shared.owned {
             return Some(text.clone());
         }
-        let offer = shared.selection?;
-        let have = shared.offers.get(&(offer as usize))?;
-        let mime = MIMES.iter().find(|m| have.iter().any(|h| h.as_bytes() == m.to_bytes()))?;
-        let (mut ours, theirs) = UnixStream::pair().ok()?;
-        // SAFETY: `receive` takes a mime and an fd; libwayland dups the fd.
-        unsafe {
-            (shared.lib.marshal)(offer, op::OFFER_RECEIVE, null::<Interface>(), shared.version, 0, mime.as_ptr(), theirs.as_raw_fd() as c_int);
-            (shared.lib.flush)(shared.display);
+        let have = shared.offers.get(&(shared.selection? as usize))?;
+        let mime = *MIMES.iter().find(|m| have.iter().any(|h| h.as_bytes() == m.to_bytes()))?;
+        String::from_utf8(receive(shared, mime, READ_TIMEOUT)?).ok()
+    }
+
+    /// The selection as a PNG, if it offers one.
+    pub fn read_image(&mut self) -> Option<Vec<u8>> {
+        self.poll();
+        // SAFETY: `shared` lives as long as `self`.
+        let shared = unsafe { &mut *self.shared };
+        if let Some(Owned::Png(png)) = &shared.owned {
+            return Some(png.clone());
         }
-        drop(theirs);
-        let _ = ours.set_read_timeout(Some(READ_TIMEOUT));
-        let mut bytes = Vec::new();
-        // A timeout leaves what arrived in `bytes`; that is the best we get.
-        let _ = ours.read_to_end(&mut bytes);
-        // Nothing at all means a dead offer (its source went away while
-        // we were not focused to hear about it): keep what we have.
-        if bytes.is_empty() {
-            return None;
-        }
-        String::from_utf8(bytes).ok()
+        let have = shared.offers.get(&(shared.selection? as usize))?;
+        have.iter().any(|h| h.as_bytes() == PNG.to_bytes()).then(|| receive(shared, PNG, IMAGE_TIMEOUT)).flatten()
     }
 
     /// Make `text` the selection. `false` when the window has never had
     /// keyboard focus (the compositor would not take it).
     pub fn write(&mut self, text: &str) -> bool {
+        self.offer_bytes(&MIMES, text.as_bytes().to_vec(), Owned::Text(text.to_owned()))
+    }
+
+    /// Make a PNG the selection.
+    pub fn write_image(&mut self, png: &[u8]) -> bool {
+        self.offer_bytes(&[PNG], png.to_vec(), Owned::Png(png.to_vec()))
+    }
+
+    fn offer_bytes(&mut self, mimes: &[&CStr], bytes: Vec<u8>, owned: Owned) -> bool {
         self.poll();
         // SAFETY: `shared` lives as long as `self`; every proxy touched is
         // live, and the source's data outlives the source.
@@ -381,18 +395,37 @@ impl Clipboard {
             if source.is_null() {
                 return false;
             }
-            let data = Box::into_raw(Box::new(SourceData { text: text.to_owned(), shared: self.shared }));
+            let data = Box::into_raw(Box::new(SourceData { bytes, shared: self.shared }));
             (shared.lib.add_listener)(source, &SOURCE_LISTENER as *const SourceListener as *const c_void, data as *mut c_void);
-            for mime in MIMES {
+            for mime in mimes {
                 (shared.lib.marshal)(source, op::SOURCE_OFFER, null::<Interface>(), shared.version, 0, mime.as_ptr());
             }
             (shared.lib.marshal)(self.device, op::DEVICE_SET_SELECTION, null::<Interface>(), shared.version, 0, source, shared.serial);
             (shared.lib.flush)(shared.display);
             shared.source = Some((source, data));
-            shared.owned_text = Some(text.to_owned());
+            shared.owned = Some(owned);
         }
         true
     }
+}
+
+/// Ask the selection's offer for `mime` and read until the other app
+/// closes its end, or `timeout`. Nothing at all means a dead offer (its
+/// source went away while we were not focused to hear about it).
+fn receive(shared: &mut Shared, mime: &CStr, timeout: Duration) -> Option<Vec<u8>> {
+    let offer = shared.selection?;
+    let (mut ours, theirs) = UnixStream::pair().ok()?;
+    // SAFETY: `receive` takes a mime and an fd; libwayland dups the fd.
+    unsafe {
+        (shared.lib.marshal)(offer, op::OFFER_RECEIVE, null::<Interface>(), shared.version, 0, mime.as_ptr(), theirs.as_raw_fd() as c_int);
+        (shared.lib.flush)(shared.display);
+    }
+    drop(theirs);
+    let _ = ours.set_read_timeout(Some(timeout));
+    let mut bytes = Vec::new();
+    // A timeout leaves what arrived in `bytes`; that is the best we get.
+    let _ = ours.read_to_end(&mut bytes);
+    (!bytes.is_empty()).then_some(bytes)
 }
 
 impl Drop for Clipboard {

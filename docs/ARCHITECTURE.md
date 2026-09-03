@@ -132,7 +132,8 @@ the event vocabulary so the harness and the shell stay apart. The
 rebuild that carries a paste key and pushes ours out after a copy
 (`lntrn_app::clipboard`, over the window's own Wayland connection with a
 `wl_data_device` of ours, U018; in-app elsewhere), and serves other apps'
-pastes from a private queue even while the window sits idle. *Input methods*: a
+pastes from a private queue even while the window sits idle. Pictures
+travel the same way as PNG (`UiState::clipboard_image`). *Input methods*: a
 composition arrives as `Event::ImePreedit`, the
 focused text widget shows it inline at its caret with an underline and
 reports the caret rect (`ShellOutput::ime`) so the harness can place the

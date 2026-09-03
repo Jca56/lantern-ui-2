@@ -1,5 +1,6 @@
-//! Lantern image: pure-std decoders for the pictures textures come from.
-//! PNG (with our own DEFLATE inflater) and JPEG (baseline and progressive).
+//! Lantern image: pure-std decoders for the pictures textures come from,
+//! PNG (with our own DEFLATE inflater) and JPEG (baseline and progressive),
+//! and a PNG writer for the clipboard and screenshots.
 //! Pixels come out as straight (non-premultiplied) RGBA8 in sRGB, rows top
 //! to bottom. Nothing here knows about the GPU or the document.
 
@@ -123,6 +124,11 @@ impl fmt::Display for ImageError {
 }
 
 impl std::error::Error for ImageError {}
+
+/// `img` as a PNG file (RGBA8, uncompressed).
+pub fn encode_png(img: &Image) -> Vec<u8> {
+    png::encode(img)
+}
 
 /// Decode a PNG or JPEG, whichever the bytes are.
 pub fn decode(bytes: &[u8]) -> Result<Image, ImageError> {
