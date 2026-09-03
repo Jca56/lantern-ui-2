@@ -204,7 +204,8 @@ The focus outline and the context menu's default outline are `theme.focus`;
 a context menu may set its own `outline`.
 
 ## U013 — The system clipboard through wl-clipboard, for now
-**Status:** Accepted (Alva, 2026-09-03)
+**Status:** Superseded by U018 the same day: on Lantern-DE the tools
+fall back to a focus-stealing window.
 **Decision:** `lntrn_app::clipboard` spawns `wl-copy` and `wl-paste` when
 they are on the PATH under Wayland: a read before any rebuild that carries
 a paste key, a write after any rebuild in which a widget copied. Without
@@ -269,3 +270,24 @@ Menu rows that toggle a preference show its state; the shell fills the
 check in when the menu opens.
 **Why:** Big text, big targets, and no motion the user did not ask for
 are requirements (ARCHITECTURE §1), not features an app opts into.
+
+## U018 — The clipboard on the window's own Wayland connection
+**Status:** Accepted (2026-09-03)
+**Decision:** `lntrn_app::wayland` speaks to the libwayland-client winit
+already loaded (found again with `dlopen`, called through function
+pointers, with interface tables of our own that are checked against
+their signatures at compile time). It binds a `wl_data_device` and a
+`wl_keyboard` of its own on the window's seat, on a private event queue
+the harness dispatches once per loop turn. A copy sets a `wl_data_source`
+with the latest keyboard serial and serves `send` from the queue; a paste
+`receive`s the selection's offer through a socket pair with a timeout.
+The embedded harness does the same with the owner's display handle.
+**Why:** `wl-copy` and `wl-paste` fall back to an invisible focus-stealing
+window when a compositor keeps `zwlr_data_control` from untrusted
+clients, as Lantern-DE does. Every copy and paste took focus from the
+window, and the focus bounce typed the shortcut's letter. The core
+protocol needs no trust, no second connection and no window: it is what
+every Wayland app does.
+**Rejected:** A data-control client on a second connection (the same
+trust filter blocks it). Reaching winit's proxies through the
+`wayland-client` crate (D001).

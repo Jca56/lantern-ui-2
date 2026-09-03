@@ -15,8 +15,10 @@ use winit::application::ApplicationHandler;
 use winit::dpi::{LogicalSize, PhysicalPosition, PhysicalSize};
 use winit::event::{StartCause, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::raw_window_handle::HasDisplayHandle;
 use winit::window::{Window, WindowId};
 
+use crate::clipboard::Clipboard;
 use crate::frame::{Gfx, draw_frame, rebuild};
 
 /// How the window is made.
@@ -118,6 +120,7 @@ struct Win {
     cursor: CursorIcon,
     /// Where the input method was last told the caret is.
     ime: Option<Rect>,
+    clipboard: Clipboard,
 }
 
 struct App<H: AppHost> {
@@ -191,7 +194,8 @@ impl<H: AppHost> App<H> {
         let mut gfx = Gfx::new(gpu, surface, size.width, size.height, &self.text);
         self.host.init_gpu(&gfx.gpu, gfx.surface.format(), &mut gfx.images);
         log_info!("window: {}x{} @ {:.2}x", size.width, size.height, self.scale);
-        self.win = Some(Win { window, gfx, cursor: CursorIcon::Default, ime: None });
+        let clipboard = Clipboard::new(window.display_handle().ok().map(|h| h.as_raw()));
+        self.win = Some(Win { window, gfx, cursor: CursorIcon::Default, ime: None, clipboard });
     }
 
     /// Rebuild the UI from the pending events (possibly more than once),
@@ -202,7 +206,7 @@ impl<H: AppHost> App<H> {
         };
         let events = std::mem::take(&mut self.events);
         let ws = WindowState { maximized: win.window.is_maximized(), focused: self.focused };
-        let (out, pending) = rebuild(&mut win.gfx, &mut self.host, &mut self.shell, &mut self.text, &mut self.draw, &events, self.scale, ws);
+        let (out, pending) = rebuild(&mut win.gfx, &mut self.host, &mut self.shell, &mut self.text, &mut self.draw, &events, self.scale, ws, &mut win.clipboard);
         if pending {
             // Out of rebuilds with work still pending: finish it next frame.
             self.dirty = true;
@@ -285,7 +289,7 @@ impl<H: AppHost> ApplicationHandler for App<H> {
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         if let Some(ev) = crate::translate::window_event(&event, &mut self.mods, &mut self.pointer) {
             self.events.push(ev);
-            if let Some(text) = crate::translate::key_text(&event) {
+            if let Some(text) = crate::translate::key_text(&event, self.mods) {
                 self.events.push(text);
             }
             self.dirty = true;
@@ -321,6 +325,10 @@ impl<H: AppHost> ApplicationHandler for App<H> {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        // The clipboard's own queue: another app pasting what we copied.
+        if let Some(w) = &mut self.win {
+            w.clipboard.poll();
+        }
         if self.dirty && let Some(w) = &self.win {
             self.dirty = false;
             w.window.request_redraw();

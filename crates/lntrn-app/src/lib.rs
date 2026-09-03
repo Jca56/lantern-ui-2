@@ -19,6 +19,8 @@ pub mod clipboard;
 pub mod embed;
 mod frame;
 pub mod translate;
+#[cfg(target_os = "linux")]
+pub mod wayland;
 
 pub use app::{AppConfig, AppHost, RenderCx, run};
 pub use embed::{EmbedConfig, EmbedOutput, Embedded};

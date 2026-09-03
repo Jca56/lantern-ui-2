@@ -78,6 +78,10 @@ impl Ui<'_> {
             let x = (inner.min.x + inner.width() * t.clamp(0.0, 1.0)).round();
             self.draw.vline(x, inner.min.y, inner.max.y, m.px(2.0), self.theme.text);
         }
+        if r.clicked {
+            // The caller moves the playhead after this frame drew it.
+            self.state.request_rebuild = true;
+        }
         r.clicked.then(|| ((self.state.pointer.x - inner.min.x) / inner.width().max(1.0)).clamp(0.0, 1.0))
     }
 }

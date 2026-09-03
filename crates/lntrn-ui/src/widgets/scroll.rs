@@ -107,8 +107,10 @@ impl Ui<'_> {
         let saved_clip = self.clip();
         let saved_avail = self.avail_width();
         let after_cursor = self.cursor();
+        let saved_bottom = self.bottom;
         let content_clip = inner.intersection(&saved_clip);
         self.set_clip(content_clip);
+        self.bottom = inner.max.y;
         self.draw.push_clip(content_clip);
         let origin = inner.min - offset;
         self.set_cursor(origin);
@@ -149,6 +151,7 @@ impl Ui<'_> {
         }
         self.draw.pop_clip();
         self.set_clip(saved_clip);
+        self.bottom = saved_bottom;
         self.set_avail_width(saved_avail);
         self.set_cursor(after_cursor);
 

@@ -19,6 +19,7 @@ use lntrn_text::TextEngine;
 use lntrn_ui::{CursorIcon, Event, Shell, WindowState};
 
 use crate::app::AppHost;
+use crate::clipboard::Clipboard;
 use crate::frame::{Gfx, draw_frame, rebuild};
 
 /// How an embedded view is made.
@@ -61,6 +62,7 @@ pub struct Embedded<H: AppHost> {
     focused: bool,
     wake: Option<Instant>,
     dirty: bool,
+    clipboard: Clipboard,
 }
 
 impl<H: AppHost> Embedded<H> {
@@ -79,7 +81,8 @@ impl<H: AppHost> Embedded<H> {
         let mut gfx = Gfx::new(gpu, surface, width.max(1), height.max(1), &text);
         host.init_gpu(&gfx.gpu, gfx.surface.format(), &mut gfx.images);
         log_info!("embedded view: {width}x{height} @ {:.2}x", config.scale);
-        Ok(Self { gfx, text, draw: DrawList::new(), shell, host, events: Vec::new(), scale: config.scale, focused: true, wake: None, dirty: true })
+        let clipboard = Clipboard::new(Some(display));
+        Ok(Self { gfx, text, draw: DrawList::new(), shell, host, events: Vec::new(), scale: config.scale, focused: true, wake: None, dirty: true, clipboard })
     }
 
     /// Queue an input event for the next frame.
@@ -105,7 +108,8 @@ impl<H: AppHost> Embedded<H> {
         self.wake = None;
         let events = std::mem::take(&mut self.events);
         let ws = WindowState { maximized: true, focused: self.focused };
-        let (out, pending) = rebuild(&mut self.gfx, &mut self.host, &mut self.shell, &mut self.text, &mut self.draw, &events, self.scale, ws);
+        self.clipboard.poll();
+        let (out, pending) = rebuild(&mut self.gfx, &mut self.host, &mut self.shell, &mut self.text, &mut self.draw, &events, self.scale, ws, &mut self.clipboard);
         if pending {
             self.dirty = true;
         }

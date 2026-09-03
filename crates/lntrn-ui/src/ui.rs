@@ -84,6 +84,8 @@ pub struct Ui<'a> {
     pub(crate) clip: Rect,
     pub(crate) cursor: Vec2,
     pub(crate) avail_w: f64,
+    /// Where the content area ends: what [`Ui::remaining_height`] measures to.
+    pub(crate) bottom: f64,
     pub(crate) max_y: f64,
     pub(crate) row: Option<RowState>,
     pub(crate) ids: Vec<WidgetId>,
@@ -117,6 +119,7 @@ impl<'a> Ui<'a> {
             clip,
             cursor: content.min,
             avail_w: content.width(),
+            bottom: content.max.y,
             max_y: content.min.y,
             row: None,
             ids: vec![id],
@@ -176,8 +179,10 @@ impl<'a> Ui<'a> {
         }
     }
 
+    /// Room left below the cursor inside the content area (its padding
+    /// stays clear), within the clip.
     pub fn remaining_height(&self) -> f64 {
-        (self.clip.max.y - self.cursor.y).max(0.0)
+        (self.bottom.min(self.clip.max.y) - self.cursor.y).max(0.0)
     }
 
     pub fn layer(&self) -> usize {

@@ -79,9 +79,12 @@ pub fn window_event(ev: &WindowEvent, mods: &mut Modifiers, pointer: &mut Vec2) 
 }
 
 /// The committed text of a key press, if any (separate from the key event).
-pub fn key_text(ev: &WindowEvent) -> Option<Event> {
+/// A shortcut (Ctrl or Super held) never types, whatever the keymap says.
+pub fn key_text(ev: &WindowEvent, mods: Modifiers) -> Option<Event> {
     if let WindowEvent::KeyboardInput { event, .. } = ev
         && event.state == ElementState::Pressed
+        && !mods.ctrl()
+        && !mods.super_key()
         && let Some(t) = &event.text
         && !t.chars().all(char::is_control)
     {
