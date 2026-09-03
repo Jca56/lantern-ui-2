@@ -22,5 +22,5 @@ mod tree;
 pub use curve::CurveResponse;
 pub use scroll::ScrollView;
 pub use table::{Align, Cell, Column, RowStep, Table, TableResponse};
-pub use text_field::{TextOpts, TextResponse};
+pub use text_field::{TextOpts, TextResponse, Validate};
 pub use tree::TreeResponse;

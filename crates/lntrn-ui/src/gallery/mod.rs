@@ -78,6 +78,8 @@ pub struct GalleryState {
     pub drag_picture: bool,
     /// The last link clicked in the rich text sample.
     pub last_link: String,
+    /// A validated field: a port number.
+    pub port: String,
     pub rows: Vec<TableRow>,
     pub picked_row: Option<usize>,
     /// The pick in the ten-thousand-row list.
@@ -126,6 +128,7 @@ impl Default for GalleryState {
             dropped: Vec::new(),
             drag_picture: false,
             last_link: String::new(),
+            port: "8080".to_owned(),
             rows: sample_rows(),
             picked_row: None,
             big_pick: None,
@@ -261,6 +264,12 @@ fn text(ui: &mut Ui, g: &mut GalleryState) {
         ui.label_dim(&format!("{} chars", g.secret.chars().count()));
     });
     ui.combo("font", &mut g.font, &FONTS, "Type or pick a font");
+    let r = ui.text_field_validated("port", &mut g.port, &|s| match s.trim().parse::<u32>() {
+        Ok(1..=65535) => None,
+        Ok(_) => Some("1 to 65535".to_owned()),
+        Err(_) => Some("a port number".to_owned()),
+    });
+    ui.label_dim(if r.invalid { "Enter commits nothing until the port passes." } else { "A port: 1 to 65535. Try letters." });
     ui.separator();
     ui.heading("Text area");
     ui.text_area("notes", &mut g.notes, Some(ui.m.px(220.0)));

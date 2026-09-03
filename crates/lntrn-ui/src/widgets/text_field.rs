@@ -19,15 +19,31 @@ pub struct TextResponse {
     /// Escape was pressed.
     pub cancelled: bool,
     pub focused: bool,
+    /// The text fails the field's check ([`TextOpts::validate`]): the
+    /// frame is red, the problem shows in the field, and Enter does not
+    /// commit.
+    pub invalid: bool,
 }
 
+/// A text field's check: what is wrong with the text, or `None`.
+pub type Validate<'a> = &'a dyn Fn(&str) -> Option<String>;
+
 /// How a text field shows itself.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Default)]
 pub struct TextOpts<'a> {
     /// Dim text shown while the field is empty.
     pub placeholder: &'a str,
     /// Dots instead of the text, for secrets.
     pub password: bool,
+    /// What is wrong with the text, if anything: the field turns red and
+    /// says so, and Enter commits nothing until it passes.
+    pub validate: Option<Validate<'a>>,
+}
+
+impl std::fmt::Debug for TextOpts<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TextOpts").field("placeholder", &self.placeholder).field("password", &self.password).field("validate", &self.validate.is_some()).finish()
+    }
 }
 
 /// What a password field shows per character.
@@ -204,12 +220,19 @@ impl Ui<'_> {
 
     /// A text field that shows `placeholder`, dim, while it is empty.
     pub fn text_field_hint(&mut self, label: &str, value: &mut String, placeholder: &str) -> TextResponse {
-        self.text_field_with(label, value, TextOpts { placeholder, password: false })
+        self.text_field_with(label, value, TextOpts { placeholder, ..TextOpts::default() })
     }
 
     /// A text field that shows dots instead of what is typed.
     pub fn password_field(&mut self, label: &str, value: &mut String, placeholder: &str) -> TextResponse {
-        self.text_field_with(label, value, TextOpts { placeholder, password: true })
+        self.text_field_with(label, value, TextOpts { placeholder, password: true, ..TextOpts::default() })
+    }
+
+    /// A text field checked by `validate`, which names what is wrong with
+    /// the text (`None`: nothing). While it fails, the frame is red, the
+    /// problem shows at the field's right, and Enter does not commit.
+    pub fn text_field_validated(&mut self, label: &str, value: &mut String, validate: Validate) -> TextResponse {
+        self.text_field_with(label, value, TextOpts { validate: Some(validate), ..TextOpts::default() })
     }
 
     pub fn text_field_with(&mut self, label: &str, value: &mut String, opts: TextOpts) -> TextResponse {
@@ -364,11 +387,29 @@ impl Ui<'_> {
             self.state.text_edit(id).scroll = scroll;
         }
 
+        // The check: a failing field is outlined red, says why when there
+        // is room, and keeps Enter from meaning anything.
+        let problem = opts.validate.and_then(|v| v(value));
+        if problem.is_some() {
+            out.invalid = true;
+            out.committed = false;
+        }
+
         // Draw.
         let well = if r.focused || r.hovered { self.theme.hover(self.theme.field) } else { self.theme.field };
         self.recessed(rect, well);
-        if r.focused {
+        if problem.is_some() {
+            self.outline(rect, self.m.border * 2.0, self.theme.close);
+        } else if r.focused {
             self.outline(rect, self.m.border, self.theme.focus);
+        }
+        if let Some(msg) = &problem {
+            let w = self.measure(msg, &style);
+            let text_w = adv.last().map_or(0.0, |(_, x)| f64::from(*x)) - scroll;
+            if text_w + self.m.pad + w <= inner.width() {
+                let at = Rect::new(Vec2::new(inner.max.x - w, rect.min.y), Vec2::new(inner.max.x, rect.max.y));
+                self.text_in_rect(msg, &style, at, self.theme.close);
+            }
         }
         let clip = inner.intersection(&self.clip());
         self.draw.push_clip(clip);

@@ -20,7 +20,7 @@ impl Ui<'_> {
         let (field, button) = rect.split_x(rect.max.x - m.widget_h);
         // Down opens the list; the field would otherwise swallow the key.
         let open_key = self.state.has_focus(id) && self.state.take_key(|k| k.key == Key::ArrowDown && k.mods.is_empty()).is_some();
-        let mut out = self.text_edit_core_with(id, field, value, TextOpts { placeholder, password: false });
+        let mut out = self.text_edit_core_with(id, field, value, TextOpts { placeholder, ..TextOpts::default() });
 
         let open_now = *self.state.open(id);
         let b = self.interact(id.with("open"), button, Sense::CLICK);

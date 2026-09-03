@@ -41,6 +41,7 @@ them.
 - **Widgets**: labels, headings, paragraphs, buttons, icon buttons (47
   procedural icons, no icon font), toggles, radio groups, tabs, sliders,
   range sliders, vertical faders, an XY pad, drag numbers, spinners,
+  validated text fields (red frame, the reason inside, Enter blocked),
   knobs, dropdowns, an editable combo box, menu buttons, selectables,
   text fields (placeholders, passwords), a multi-line text area with
   undo, colour picker, tree view, tables with sortable and resizable

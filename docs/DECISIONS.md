@@ -389,3 +389,20 @@ it is.
 **Rejected:** A full CommonMark parser (nesting, tables, images: none
 needed yet); styled runs inside `lntrn-text` layout (a bigger change to
 the engine for the same result on screen).
+
+## U023 — A text field's check lives in its options
+**Status:** Accepted (2026-09-03)
+**Decision:** `TextOpts::validate` is a borrowed closure from the text to
+what is wrong with it (`None` when nothing is). While it names a
+problem, the field is outlined in the theme's close red, the problem is
+written at the field's right when the text leaves room for it, Enter
+sets neither `committed` nor loses focus, and `TextResponse::invalid` is
+true. `Ui::text_field_validated` is the one-call form. Number fields and
+spinners keep their own parsing.
+**Why:** Names, ports and paths all want "say what's wrong, right here,
+and don't let Enter through" and nothing more; the closure keeps the
+rule with the widget that uses it, and the host asks the same closure
+when it wants the message elsewhere.
+**Rejected:** A `Validator` trait and a set of stock rules (a closure is
+shorter than any of them); the message on a line under the field (it
+moves the layout every keystroke).
