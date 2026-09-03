@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use lntrn_core::{log_error, log_info, log_trace};
 use lntrn_math::{Rect, Vec2};
 use lntrn_render::wgpu;
-use lntrn_render::{DrawList, Gpu, Pass2d, RenderGraph, SurfaceTarget, TexDesc, TexId, TexturePool, clear_pass};
+use lntrn_render::{DrawList, Gpu, Images, Pass2d, RenderGraph, SurfaceTarget, TexDesc, TexId, TexturePool, clear_pass};
 use lntrn_text::TextEngine;
 use lntrn_ui::persist;
 use lntrn_ui::{CursorIcon, Event, Host, Modifiers, ResizeEdge, Shell, WindowCommand, WindowState};
@@ -67,15 +67,16 @@ pub struct RenderCx<'f, 'a> {
 /// A [`Host`] that also takes part in the GPU frame. Every hook has a
 /// do-nothing default; a UI-only app implements none of them.
 pub trait AppHost: Host + Sized + 'static {
-    /// The GPU exists: make pipelines and buffers.
-    fn init_gpu(&mut self, gpu: &Gpu, format: wgpu::TextureFormat) {
-        let _ = (gpu, format);
+    /// The GPU exists: make pipelines and buffers, upload pictures.
+    fn init_gpu(&mut self, gpu: &Gpu, format: wgpu::TextureFormat, images: &mut Images) {
+        let _ = (gpu, format, images);
     }
     /// After each rebuild, before the frame is drawn: resolve GPU-side
-    /// queries (picking) against the shell. Return `true` to rebuild again
-    /// so what changed shows in this same frame.
-    fn after_rebuild(&mut self, gpu: &Gpu, shell: &mut Shell<Self>) -> bool {
-        let _ = (gpu, shell);
+    /// queries (picking) against the shell, upload pictures that arrived.
+    /// Return `true` to rebuild again so what changed shows in this same
+    /// frame.
+    fn after_rebuild(&mut self, gpu: &Gpu, images: &mut Images, shell: &mut Shell<Self>) -> bool {
+        let _ = (gpu, images, shell);
         false
     }
     /// Whether [`RenderCx::depth`] should exist.
@@ -118,6 +119,7 @@ struct Gfx {
     gpu: Gpu,
     surface: SurfaceTarget,
     pass2d: Pass2d,
+    images: Images,
     pool: TexturePool,
     cursor: CursorIcon,
 }
@@ -191,10 +193,11 @@ impl<H: AppHost> App<H> {
             }
         };
         let surface = SurfaceTarget::new(&gpu, surface, size.width, size.height);
-        let pass2d = Pass2d::new(&gpu, surface.format(), self.text.atlas());
-        self.host.init_gpu(&gpu, surface.format());
+        let mut images = Images::new(&gpu);
+        let pass2d = Pass2d::new(&gpu, surface.format(), self.text.atlas(), &images);
+        self.host.init_gpu(&gpu, surface.format(), &mut images);
         log_info!("window: {}x{} @ {:.2}x", size.width, size.height, self.scale);
-        self.gfx = Some(Gfx { window, gpu, surface, pass2d, pool: TexturePool::new(), cursor: CursorIcon::Default });
+        self.gfx = Some(Gfx { window, gpu, surface, pass2d, images, pool: TexturePool::new(), cursor: CursorIcon::Default });
     }
 
     /// Rebuild the UI from the pending events (possibly more than once),
@@ -225,7 +228,7 @@ impl<H: AppHost> App<H> {
             // draws their result in this same frame. Doing it here (not after
             // present) also means a failed swapchain acquire cannot swallow
             // a click.
-            if self.host.after_rebuild(&gfx.gpu, &mut self.shell) {
+            if self.host.after_rebuild(&gfx.gpu, &mut gfx.images, &mut self.shell) {
                 again = true;
             }
             out = Some(o);
@@ -264,7 +267,7 @@ impl<H: AppHost> App<H> {
         let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder = gfx.gpu.create_encoder("lantern frame");
 
-        let (pass2d, draw, text) = (&mut gfx.pass2d, &self.draw, &mut self.text);
+        let (pass2d, draw, text, images) = (&mut gfx.pass2d, &self.draw, &mut self.text, &gfx.images);
         let clear = out.clear;
         let mut graph = RenderGraph::new();
         let backbuffer = graph.import(&view);
@@ -275,7 +278,7 @@ impl<H: AppHost> App<H> {
         });
         self.host.render(&mut RenderCx { gpu: &gfx.gpu, graph: &mut graph, backbuffer, depth, size });
         graph.add_node("ui", &[], &[backbuffer], move |gpu, enc, views| {
-            pass2d.draw(gpu, enc, views.get(backbuffer), size, draw, text.atlas_mut(), None);
+            pass2d.draw(gpu, enc, views.get(backbuffer), size, draw, text.atlas_mut(), images, None);
         });
         graph.execute(&gfx.gpu, &mut gfx.pool, &mut encoder);
         gfx.pool.end_frame();

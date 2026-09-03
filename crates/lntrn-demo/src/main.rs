@@ -6,7 +6,9 @@
 //! tool strip, a bar, a submenu, a live property panel and a custom row —
 //! every door into the shell, opened once.
 
-use lntrn_app::{AppConfig, AppHost, run};
+use lntrn_app::lntrn_render::{Gpu, Images};
+use lntrn_app::{AppConfig, AppHost, run, wgpu};
+use lntrn_image::Image;
 use lntrn_props::{Reflect, Value, props};
 use lntrn_ui::gallery::{self, GalleryState};
 use lntrn_ui::keymap::CTX_WINDOW;
@@ -23,8 +25,9 @@ enum Editor {
 const EDITORS: [Editor; 4] = [Editor::Gallery, Editor::Preferences, Editor::Notes, Editor::Empty];
 
 /// Palette entries: (action id, label).
-const PALETTE: [(&str, &str); 7] = [
+const PALETTE: [(&str, &str); 8] = [
     ("demo.open", "Open File…"),
+    ("demo.open_image", "Open Picture…"),
     ("demo.save_as", "Save As…"),
     ("demo.reset", "Reset Gallery"),
     ("demo.about", "About"),
@@ -48,6 +51,33 @@ struct Demo {
     status: String,
     /// Mirror of the shell preference, for the Help menu's check mark.
     ffm: bool,
+    /// A decoded picture waiting for the GPU (uploaded in `after_rebuild`).
+    pending_image: Option<(String, Image)>,
+}
+
+/// A picture made from arithmetic: a sky gradient, a sun, rolling hills.
+fn sample_picture() -> Image {
+    let (w, h) = (640u32, 400u32);
+    let mut rgba = Vec::with_capacity((w * h * 4) as usize);
+    for y in 0..h {
+        for x in 0..w {
+            let (fx, fy) = (x as f64 / w as f64, y as f64 / h as f64);
+            let hill = 0.62 + 0.08 * (fx * 9.0).sin() + 0.05 * (fx * 23.0 + 1.0).cos();
+            let (r, g, b) = if fy > hill {
+                let t = (fy - hill) * 3.0;
+                (0.16 + 0.1 * t, 0.55 - 0.2 * t, 0.2)
+            } else {
+                let d = ((fx - 0.72) * 1.6).hypot(fy - 0.28);
+                if d < 0.11 {
+                    (1.0, 0.85, 0.35)
+                } else {
+                    (0.25 + 0.5 * fy, 0.45 + 0.4 * fy, 0.9)
+                }
+            };
+            rgba.extend([(r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8, 255]);
+        }
+    }
+    Image::new(w, h, rgba)
 }
 
 impl Demo {
@@ -67,6 +97,7 @@ impl Demo {
         Self {
             gallery: GalleryState::default(),
             ffm: false,
+            pending_image: None,
             keys,
             notes: "Right-click the gallery for a context menu. F3 opens the palette. Tab walks the widgets.".to_owned(),
             status: "Ctrl+F: File · F3: palette · Ctrl+Space: maximize · Ctrl+Q: quit".to_owned(),
@@ -135,6 +166,7 @@ impl Host for Demo {
                 "File",
                 vec![
                     MenuItem::new("Open…", Action::new("demo.open")),
+                    MenuItem::new("Open Picture…", Action::new("demo.open_image")),
                     MenuItem::new("Save As…", Action::new("demo.save_as")),
                     MenuItem::new("Reset Gallery…", Action::new("demo.reset_ask")),
                     MenuItem::new("Quit", Action::new(actions::QUIT)),
@@ -199,6 +231,18 @@ impl Host for Demo {
                 self.notes = std::fs::read_to_string(path()).unwrap_or_else(|e| format!("could not read: {e}"));
                 cx.toast(&self.status.clone());
             }
+            "demo.open_image" => cx.request(ShellRequest::PathDialog { action: Action::new("demo.image_opened"), save: false, suggest: home.join("Pictures").join("picture.png").display().to_string() }),
+            "demo.image_opened" => {
+                let p = path();
+                match std::fs::read(&p).map_err(|e| e.to_string()).and_then(|bytes| lntrn_image::decode(&bytes).map_err(|e| format!("{e:?}"))) {
+                    Ok(img) => {
+                        self.status = format!("Decoded {} ({}×{})", p, img.width, img.height);
+                        self.pending_image = Some((p, img));
+                        self.gallery.tab = 4;
+                    }
+                    Err(e) => cx.request(ShellRequest::Dialog(Dialog::notice("Could not open the picture", &format!("{p}\n{e}")))),
+                }
+            }
             "demo.save_as" => cx.request(ShellRequest::PathDialog { action: Action::new("demo.saved"), save: true, suggest: home.join("notes.txt").display().to_string() }),
             "demo.saved" => {
                 self.status = match std::fs::write(path(), &self.notes) {
@@ -253,7 +297,24 @@ impl Host for Demo {
     }
 }
 
-impl AppHost for Demo {}
+impl AppHost for Demo {
+    fn init_gpu(&mut self, gpu: &Gpu, _format: wgpu::TextureFormat, images: &mut Images) {
+        self.gallery.image = Some(images.add(gpu, &sample_picture()));
+        self.gallery.image_name = "Made from arithmetic".to_owned();
+    }
+
+    fn after_rebuild(&mut self, gpu: &Gpu, images: &mut Images, _shell: &mut Shell<Self>) -> bool {
+        let Some((name, img)) = self.pending_image.take() else {
+            return false;
+        };
+        self.gallery.image = Some(match self.gallery.image {
+            Some(old) => images.replace(gpu, old, &img),
+            None => images.add(gpu, &img),
+        });
+        self.gallery.image_name = name;
+        true
+    }
+}
 
 fn main() {
     let mut shell = Shell::new(Editor::Gallery);

@@ -3,7 +3,7 @@
 //! into the shared `DrawList`.
 
 use lntrn_math::{Color, Rect, Vec2};
-use lntrn_render::DrawList;
+use lntrn_render::{DrawList, ImageHandle};
 use lntrn_text::{GlyphQuad, TextEngine, TextMetrics, TextStyle};
 
 use crate::event::Key;
@@ -282,6 +282,29 @@ impl<'a> Ui<'a> {
         self.cursor = Vec2::new(top.x, bottom);
         self.avail_w = saved_w;
         self.max_y = self.max_y.max(bottom);
+    }
+
+    // ---- pictures ---------------------------------------------------------
+
+    /// Draw `image` at `size` logical pixels (the available width when
+    /// `size.x` is [`FILL`], keeping the aspect).
+    pub fn image(&mut self, image: ImageHandle, size: Vec2) -> Rect {
+        let size = if size.x == FILL { Vec2::new(self.avail_width(), self.avail_width() / image.aspect()) } else { Vec2::new(self.m.px(size.x), self.m.px(size.y)) };
+        let rect = self.alloc(size);
+        self.draw.image(rect, image, self.m.radius, Color::WHITE);
+        rect
+    }
+
+    /// Draw `image` as large as fits inside `max` logical pixels without
+    /// stretching, centred in that box.
+    pub fn image_fit(&mut self, image: ImageHandle, max: Vec2) -> Rect {
+        let max = Vec2::new(if max.x == FILL { self.avail_width() } else { self.m.px(max.x) }, self.m.px(max.y));
+        let scale = (max.x / image.width.max(1) as f64).min(max.y / image.height.max(1) as f64);
+        let size = Vec2::new((image.width as f64 * scale).round(), (image.height as f64 * scale).round());
+        let cell = self.alloc(Vec2::new(if self.in_row() { size.x } else { FILL }, size.y));
+        let rect = Rect::from_center_size(cell.center(), size).round();
+        self.draw.image(rect, image, self.m.radius, Color::WHITE);
+        rect
     }
 
     // ---- time -------------------------------------------------------------

@@ -9,18 +9,21 @@ use lntrn_core::impl_pod;
 use lntrn_math::{Color, Rect, Vec2};
 use lntrn_text::GlyphQuad;
 
+use crate::images::{ImageHandle, ImageId};
+
 /// Vertex format of the 2D pass. Must match `shaders/ui.wgsl`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(C)]
 pub struct Vertex2d {
     pub pos: [f32; 2],
-    /// Texel-space atlas coordinates (glyph mode only).
+    /// Texel-space atlas coordinates (glyph mode) or `0..1` image
+    /// coordinates (image mode).
     pub uv: [f32; 2],
     /// Linear RGB, straight alpha.
     pub color: [f32; 4],
     /// SDF rect: center x, center y, half width, half height.
     pub rect: [f32; 4],
-    /// radius, mode, stroke width, unused.
+    /// radius, mode, stroke width, image id (image mode).
     pub params: [f32; 4],
     /// x0, y0, x1, y1 clip in pixels.
     pub clip: [f32; 4],
@@ -32,6 +35,29 @@ const MODE_GLYPH: f32 = 1.0;
 const MODE_STROKE: f32 = 2.0;
 const MODE_PLAIN: f32 = 3.0;
 const MODE_SHADOW: f32 = 4.0;
+const MODE_IMAGE: f32 = 5.0;
+
+/// A stretch of vertices drawn with one image bound (`None`: no image).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ImageRun {
+    pub start: usize,
+    pub end: usize,
+    pub image: Option<ImageId>,
+}
+
+/// Split `vertices` into runs that each need one image bound. The pass
+/// draws each run with its bind group; a list with no images is one run.
+pub fn image_runs(vertices: &[Vertex2d]) -> Vec<ImageRun> {
+    let mut runs: Vec<ImageRun> = Vec::new();
+    for (i, v) in vertices.iter().enumerate() {
+        let image = (v.params[1] == MODE_IMAGE).then(|| ImageId(v.params[3] as u32));
+        match runs.last_mut() {
+            Some(r) if r.image == image => r.end = i + 1,
+            _ => runs.push(ImageRun { start: i, end: i + 1, image }),
+        }
+    }
+    runs
+}
 
 /// "No clip": anything on screen passes.
 const OPEN_CLIP: [f32; 4] = [-1.0e6, -1.0e6, 1.0e6, 1.0e6];
@@ -341,6 +367,31 @@ impl DrawList {
         self.rect(Rect::from_xywh(x, y0, width, y1 - y0), color);
     }
 
+    /// Draw `image` stretched over `r`, tinted by `tint` (white for as is),
+    /// with corners rounded by `radius`.
+    pub fn image(&mut self, r: Rect, image: ImageHandle, radius: f64, tint: Color) {
+        self.image_uv(r, image, Rect::from_xywh(0.0, 0.0, 1.0, 1.0), radius, tint);
+    }
+
+    /// Draw the `uv` part of `image` (`0..1` on both axes) over `r`.
+    pub fn image_uv(&mut self, r: Rect, image: ImageHandle, uv: Rect, radius: f64, tint: Color) {
+        if r.is_empty() || tint.a <= 0.0 {
+            return;
+        }
+        let radius = radius.min(r.width() * 0.5).min(r.height() * 0.5).max(0.0);
+        let c = r.center();
+        let h = r.size() * 0.5;
+        let corners = [r.min, Vec2::new(r.max.x, r.min.y), r.max, Vec2::new(r.min.x, r.max.y)];
+        let (u0, v0, u1, v1) = (uv.min.x as f32, uv.min.y as f32, uv.max.x as f32, uv.max.y as f32);
+        self.push_quad(
+            corners,
+            [[u0, v0], [u1, v0], [u1, v1], [u0, v1]],
+            tint.to_linear().to_gpu(),
+            [c.x as f32, c.y as f32, h.x as f32, h.y as f32],
+            [radius as f32, MODE_IMAGE, 0.0, image.id.0 as f32],
+        );
+    }
+
     /// Glyph quads from `lntrn-text`. Their colors are treated as sRGB and
     /// converted here, like every other color in the list.
     pub fn glyphs(&mut self, quads: &[GlyphQuad]) {
@@ -478,6 +529,32 @@ mod tests {
         assert_eq!(v[5].color, [1.0, 0.0, 0.0, 1.0], "top-right");
         assert_eq!(v[2].color, [0.0, 0.0, 0.0, 1.0], "bottom-right");
         assert_eq!(v[1].color, [0.0, 0.0, 1.0, 1.0], "bottom-left");
+    }
+
+    #[test]
+    fn images_split_into_runs() {
+        let mut d = DrawList::new();
+        let a = ImageHandle { id: ImageId(3), width: 10, height: 10 };
+        let b = ImageHandle { id: ImageId(7), width: 10, height: 10 };
+        d.rect(Rect::from_xywh(0.0, 0.0, 1.0, 1.0), Color::WHITE);
+        d.image(Rect::from_xywh(0.0, 0.0, 4.0, 2.0), a, 1.0, Color::WHITE);
+        d.image(Rect::from_xywh(0.0, 0.0, 4.0, 2.0), a, 0.0, Color::WHITE);
+        d.rect(Rect::from_xywh(0.0, 0.0, 1.0, 1.0), Color::WHITE);
+        d.image_uv(Rect::from_xywh(0.0, 0.0, 4.0, 2.0), b, Rect::from_xywh(0.5, 0.0, 0.5, 1.0), 0.0, Color::RED);
+        let v: Vec<_> = d.vertices().copied().collect();
+        let runs = image_runs(&v);
+        assert_eq!(runs, vec![
+            ImageRun { start: 0, end: 6, image: None },
+            ImageRun { start: 6, end: 18, image: Some(ImageId(3)) },
+            ImageRun { start: 18, end: 24, image: None },
+            ImageRun { start: 24, end: 30, image: Some(ImageId(7)) },
+        ]);
+        assert_eq!(v[6].params, [1.0, MODE_IMAGE, 0.0, 3.0]);
+        assert_eq!(v[6].uv, [0.0, 0.0]);
+        assert_eq!(v[8].uv, [1.0, 1.0], "bottom-right corner samples the far corner");
+        assert_eq!(v[24].uv, [0.5, 0.0], "a uv sub-rect");
+        assert_eq!(v[24].color, [1.0, 0.0, 0.0, 1.0], "the tint");
+        assert!(image_runs(&[]).is_empty());
     }
 
     #[test]

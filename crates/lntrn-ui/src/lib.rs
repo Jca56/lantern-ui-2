@@ -53,3 +53,5 @@ pub use theme::{Metrics, Theme};
 pub use titlebar::{ResizeEdge, WindowCommand};
 pub use toasts::Toast;
 pub use ui::{FILL, KeyStep, Response, Sense, Ui};
+/// Re-exported: the handle [`Ui::image`] draws.
+pub use lntrn_render::ImageHandle;

@@ -1,5 +1,6 @@
-// Lantern 2D pass: one vertex stream for rects, rounded rects, strokes and
-// glyphs, drawn against a single RGBA atlas with premultiplied blending.
+// Lantern 2D pass: one vertex stream for rects, rounded rects, strokes,
+// glyphs and pictures, drawn against a single RGBA atlas (plus one image
+// texture per run) with premultiplied blending.
 //
 // Coordinates arrive in framebuffer pixels (origin top-left, y down). Colors
 // arrive LINEAR with straight alpha; the sRGB target encodes on write.
@@ -13,6 +14,9 @@ struct Uniforms {
 @group(0) @binding(0) var<uniform> u: Uniforms;
 @group(0) @binding(1) var atlas_tex: texture_2d<f32>;
 @group(0) @binding(2) var atlas_samp: sampler;
+// The picture of the current run (an sRGB texture: samples are linear).
+@group(1) @binding(0) var image_tex: texture_2d<f32>;
+@group(1) @binding(1) var image_samp: sampler;
 
 // params.y modes
 const MODE_FILL: f32 = 0.0;   // SDF rounded rect, filled
@@ -20,13 +24,14 @@ const MODE_GLYPH: f32 = 1.0;  // textured from the atlas
 const MODE_STROKE: f32 = 2.0; // SDF rounded rect, inner stroke of width params.z
 const MODE_PLAIN: f32 = 3.0;  // hard-edged quad, no SDF
 const MODE_SHADOW: f32 = 4.0; // soft falloff outside the rect over params.z pixels
+const MODE_IMAGE: f32 = 5.0;  // textured from the run's image, corners rounded by params.x
 
 struct VsIn {
     @location(0) pos: vec2<f32>,
     @location(1) uv: vec2<f32>,
     @location(2) color: vec4<f32>,
     @location(3) rect: vec4<f32>,   // center.xy, half_size.xy
-    @location(4) params: vec4<f32>, // radius, mode, stroke width, unused
+    @location(4) params: vec4<f32>, // radius, mode, stroke width, image id
     @location(5) clip: vec4<f32>,   // x0, y0, x1, y1
 };
 
@@ -44,7 +49,8 @@ fn vs_main(in: VsIn) -> VsOut {
     var out: VsOut;
     let ndc = vec2<f32>(in.pos.x / u.screen.x * 2.0 - 1.0, 1.0 - in.pos.y / u.screen.y * 2.0);
     out.clip_pos = vec4<f32>(ndc, 0.0, 1.0);
-    out.uv = in.uv / u.atlas;
+    // Glyph quads carry texel coordinates; image quads carry 0..1.
+    out.uv = select(in.uv / u.atlas, in.uv, in.params.y == MODE_IMAGE);
     out.color = in.color;
     out.rect = in.rect;
     out.params = in.params;
@@ -82,6 +88,16 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         let cov = pow(texel.a, coverage_gamma(color.rgb));
         let boost = select(1.0, cov / texel.a, texel.a > 0.0);
         return vec4<f32>(color.rgb * color.a * texel.rgb * boost, color.a * cov);
+    }
+
+    if mode == MODE_IMAGE {
+        let texel = textureSample(image_tex, image_samp, in.uv);
+        var a = color.a * texel.a;
+        if in.params.x > 0.0 {
+            let d = sd_round_box(p - in.rect.xy, in.rect.zw, in.params.x);
+            a = a * clamp(0.5 - d, 0.0, 1.0);
+        }
+        return vec4<f32>(color.rgb * texel.rgb * a, a);
     }
 
     var alpha = color.a;

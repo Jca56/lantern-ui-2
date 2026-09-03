@@ -21,6 +21,9 @@ pub struct GalleryState {
     pub color: lntrn_math::Color,
     pub tree_pick: usize,
     pub notes: String,
+    /// A picture the host uploaded (see `lntrn-demo`), shown on its tab.
+    pub image: Option<crate::ImageHandle>,
+    pub image_name: String,
 }
 
 impl Default for GalleryState {
@@ -42,6 +45,8 @@ impl Default for GalleryState {
             progress: 0.4,
             color: lntrn_math::Color::hex(0xFFB733),
             tree_pick: 0,
+            image: None,
+            image_name: String::new(),
             notes: "Several lines of text.\nClick to place the caret, drag to select, double-click a word.\nUp and Down remember the column; Enter breaks a line; Ctrl+Enter commits.\n\nWrapping happens at the box edge, so a long line like this one folds onto the next row when the area is narrow enough to need it.".to_owned(),
         }
     }
@@ -50,14 +55,38 @@ impl Default for GalleryState {
 const CHOICES: [&str; 4] = ["Solid", "Wireframe", "Material Preview", "Rendered"];
 
 pub fn draw(ui: &mut Ui, g: &mut GalleryState) {
-    ui.tabs(&mut g.tab, &["Controls", "Knobs", "Text", "Lists"]);
+    ui.tabs(&mut g.tab, &["Controls", "Knobs", "Text", "Lists", "Pictures"]);
     ui.space(ui.m.gap);
     match g.tab {
         0 => controls(ui, g),
         1 => knobs(ui, g),
         2 => text(ui, g),
-        _ => lists(ui, g),
+        3 => lists(ui, g),
+        _ => pictures(ui, g),
     }
+}
+
+fn pictures(ui: &mut Ui, g: &mut GalleryState) {
+    ui.scroll_area("pictures", None, |ui| {
+        ui.heading("Pictures");
+        match g.image {
+            Some(img) => {
+                ui.label_dim(&format!("{} · {}×{}", g.image_name, img.width, img.height));
+                ui.label("Fit inside a box, aspect kept, corners rounded:");
+                ui.image_fit(img, lntrn_math::Vec2::new(crate::ui::FILL, 320.0));
+                ui.label("At its own size, or as wide as the panel:");
+                ui.row(|ui| {
+                    ui.image(img, lntrn_math::Vec2::new(120.0, 120.0 / img.aspect()));
+                    ui.image(img, lntrn_math::Vec2::new(60.0, 60.0 / img.aspect()));
+                    ui.image(img, lntrn_math::Vec2::new(30.0, 30.0 / img.aspect()));
+                });
+                ui.image(img, lntrn_math::Vec2::new(crate::ui::FILL, 0.0));
+            }
+            None => {
+                ui.paragraph("No picture yet. The host uploads one with Images::add and hands the gallery its handle; the demo makes one and can open a PNG or JPEG from the File menu.");
+            }
+        }
+    });
 }
 
 fn knobs(ui: &mut Ui, g: &mut GalleryState) {

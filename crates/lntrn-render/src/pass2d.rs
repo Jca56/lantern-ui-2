@@ -6,8 +6,9 @@ use lntrn_math::Color;
 use lntrn_text::Atlas;
 
 use crate::atlas_gpu::AtlasTexture;
-use crate::draw2d::{DrawList, Vertex2d};
+use crate::draw2d::{DrawList, Vertex2d, image_runs};
 use crate::gpu::Gpu;
+use crate::images::Images;
 use crate::shader;
 
 #[derive(Clone, Copy)]
@@ -33,8 +34,9 @@ pub struct Pass2d {
 }
 
 impl Pass2d {
-    /// `format` is the render target format (normally the surface's).
-    pub fn new(gpu: &Gpu, format: wgpu::TextureFormat, atlas: &Atlas) -> Self {
+    /// `format` is the render target format (normally the surface's);
+    /// `images` supplies the picture bind group layout.
+    pub fn new(gpu: &Gpu, format: wgpu::TextureFormat, atlas: &Atlas, images: &Images) -> Self {
         let source = shader::load("ui.wgsl").expect("ui.wgsl preprocesses");
         let module = gpu.device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("lntrn ui shader"),
@@ -85,7 +87,7 @@ impl Pass2d {
 
         let layout = gpu.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("lntrn 2d pipeline layout"),
-            bind_group_layouts: &[&bind_group_layout],
+            bind_group_layouts: &[&bind_group_layout, images.layout()],
             immediate_size: 0,
         });
 
@@ -151,7 +153,8 @@ impl Pass2d {
     }
 
     /// Draw `list` into `view` (`size` pixels). `clear` paints the background
-    /// first; `None` composites over whatever is already there.
+    /// first; `None` composites over whatever is already there. `images`
+    /// supplies the pictures the list refers to.
     #[allow(clippy::too_many_arguments)]
     pub fn draw(
         &mut self,
@@ -161,6 +164,7 @@ impl Pass2d {
         size: [u32; 2],
         list: &DrawList,
         atlas: &mut Atlas,
+        images: &Images,
         clear: Option<Color>,
     ) {
         self.atlas.sync(gpu, atlas);
@@ -206,7 +210,12 @@ impl Pass2d {
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &self.bind_group, &[]);
             pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            pass.draw(0..self.staging.len() as u32, 0..1);
+            // One draw per stretch of vertices sharing an image; a list
+            // without pictures is a single draw.
+            for run in image_runs(&self.staging) {
+                pass.set_bind_group(1, images.bind_group(run.image), &[]);
+                pass.draw(run.start as u32..run.end as u32, 0..1);
+            }
         }
     }
 }
