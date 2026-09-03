@@ -74,6 +74,25 @@ impl<H: Host> Shell<H> {
         self.popup.is_some()
     }
 
+    /// The area layout as text, for saving (see [`Screen::describe`]).
+    pub fn layout_description(&self, host: &H) -> String {
+        self.screen.describe(|e| host.editor_id(e))
+    }
+
+    /// Replace the layout with a saved one. Editor names the host no
+    /// longer knows become its first editor. `false` leaves the layout as
+    /// it was.
+    pub fn restore_layout(&mut self, host: &H, text: &str) -> bool {
+        let fallback = host.editors().first().copied();
+        match Screen::from_description(text, |id| host.editor_from_id(id).or(fallback)) {
+            Some(screen) => {
+                self.screen = screen;
+                true
+            }
+            None => false,
+        }
+    }
+
     /// Open the host's named menu at `at`. Unknown names open nothing.
     pub fn open_menu(&mut self, host: &H, name: &str, at: Vec2) {
         self.popup = host.menu(name).map(|menu| Popup::Menu { title: menu.title, items: menu.items, pos: at });

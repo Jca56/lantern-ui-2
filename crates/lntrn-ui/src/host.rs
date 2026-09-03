@@ -255,6 +255,15 @@ pub trait Host {
     /// Every editor kind, in the order the area header lists them.
     fn editors(&self) -> &[Self::Editor];
     fn editor_label(&self, editor: Self::Editor) -> &str;
+    /// A stable name for an editor kind, written into a saved layout.
+    /// The label by default; override if labels may change.
+    fn editor_id(&self, editor: Self::Editor) -> String {
+        self.editor_label(editor).to_owned()
+    }
+    /// The editor kind a saved layout named, if it still exists.
+    fn editor_from_id(&self, id: &str) -> Option<Self::Editor> {
+        self.editors().iter().copied().find(|&e| self.editor_id(e) == id)
+    }
 
     /// Text in the middle of the title bar.
     fn title(&self) -> String;

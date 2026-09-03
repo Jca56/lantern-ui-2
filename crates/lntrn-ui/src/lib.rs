@@ -26,6 +26,7 @@ pub mod icons;
 pub mod id;
 pub mod keymap;
 pub mod panel;
+pub mod persist;
 pub mod popups;
 pub mod prefs;
 pub mod screen;

@@ -9,6 +9,7 @@ use lntrn_math::{Rect, Vec2};
 use lntrn_render::wgpu;
 use lntrn_render::{DrawList, Gpu, Pass2d, RenderGraph, SurfaceTarget, TexDesc, TexId, TexturePool, clear_pass};
 use lntrn_text::TextEngine;
+use lntrn_ui::persist;
 use lntrn_ui::{CursorIcon, Event, Host, Modifiers, ResizeEdge, Shell, WindowCommand, WindowState};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
@@ -37,13 +38,19 @@ pub struct AppConfig {
     /// Proportional and monospace font families.
     pub sans: String,
     pub mono: String,
+    /// Keep preferences and the area layout in the app's config directory
+    /// (`~/.config/<app_id>/`) between runs.
+    pub persist: bool,
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
-        Self { title: "Lantern".into(), app_id: "lantern-app".into(), size: (1600.0, 1000.0), maximized: true, decorations: false, sans: "Inter".into(), mono: "JetBrains Mono".into() }
+        Self { title: "Lantern".into(), app_id: "lantern-app".into(), size: (1600.0, 1000.0), maximized: true, decorations: false, sans: "Inter".into(), mono: "JetBrains Mono".into(), persist: true }
     }
 }
+
+const PREFS_FILE: &str = "prefs.bin";
+const LAYOUT_FILE: &str = "layout.txt";
 
 /// What a host's [`AppHost::render`] gets to add GPU passes with.
 pub struct RenderCx<'f, 'a> {
@@ -81,9 +88,22 @@ pub trait AppHost: Host + Sized + 'static {
     }
 }
 
-/// Open the window and run until it closes.
-pub fn run<H: AppHost>(config: AppConfig, host: H, shell: Shell<H>) {
+/// Open the window and run until it closes. With `persist` on, saved
+/// preferences and layout are loaded first and written back on exit.
+pub fn run<H: AppHost>(config: AppConfig, host: H, mut shell: Shell<H>) {
     lntrn_core::log::init();
+    if config.persist && let Some(dir) = persist::config_dir(&config.app_id) {
+        if persist::load(&dir.join(PREFS_FILE), &mut shell.prefs) {
+            log_info!("loaded preferences from {}", dir.display());
+        }
+        if let Some(text) = persist::load_text(&dir.join(LAYOUT_FILE)) {
+            if shell.restore_layout(&host, &text) {
+                log_info!("restored layout: {text}");
+            } else {
+                log_error!("ignoring unreadable layout file in {}", dir.display());
+            }
+        }
+    }
     let event_loop = EventLoop::new().expect("create event loop");
     // Redraw on demand: an idle app sits at 0% CPU/GPU.
     event_loop.set_control_flow(ControlFlow::Wait);
@@ -128,6 +148,22 @@ impl<H: AppHost> App<H> {
         let text = TextEngine::new(&config.sans, &config.mono);
         log_info!("fonts: {} faces in {:.0} ms", text.face_count(), t.elapsed().as_secs_f64() * 1000.0);
         Self { config, gfx: None, text, draw: DrawList::new(), shell, host, events: Vec::new(), mods: Modifiers::NONE, pointer: Vec2::ZERO, scale: 1.0, dirty: true, wake: None, focused: true, quit: false }
+    }
+
+    /// Write preferences and the layout for next time.
+    fn save_state(&self) {
+        if !self.config.persist {
+            return;
+        }
+        let Some(dir) = persist::config_dir(&self.config.app_id) else {
+            return;
+        };
+        if let Err(e) = persist::save(&dir.join(PREFS_FILE), &self.shell.prefs) {
+            log_error!("saving preferences: {e}");
+        }
+        if let Err(e) = persist::save_text(&dir.join(LAYOUT_FILE), &self.shell.layout_description(&self.host)) {
+            log_error!("saving layout: {e}");
+        }
     }
 
     fn init_gfx(&mut self, event_loop: &ActiveEventLoop) {
@@ -320,6 +356,10 @@ impl<H: AppHost> ApplicationHandler for App<H> {
             self.wake = None;
             self.dirty = true;
         }
+    }
+
+    fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
+        self.save_state();
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
