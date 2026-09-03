@@ -120,3 +120,45 @@ fn wraps_and_scrolls_to_the_caret() {
     h.frame(f);
     assert!(h.state.scroll(id).content > 200.0, "wrapped content is taller than the box");
 }
+
+#[test]
+fn undo_and_redo_step_through_edits() {
+    let mut h = Harness::new(900.0, 700.0);
+    let text = RefCell::new(String::new());
+    let draw = |ui: &mut Ui, s: &mut String| {
+        ui.text_area("notes", s, Some(400.0));
+    };
+    let f = |ui: &mut Ui| draw(ui, &mut text.borrow_mut());
+    let id = area(&mut h, &text, draw);
+    h.click_on(id, f);
+    h.type_text("one");
+    h.frame(f);
+    h.advance(2.0);
+    h.type_text(" two");
+    h.frame(f);
+    h.advance(2.0);
+    h.key(Key::Backspace);
+    h.frame(f);
+    assert_eq!(*text.borrow(), "one tw");
+    h.key_with(Key::Char('z'), Modifiers::CTRL);
+    h.frame(f);
+    assert_eq!(*text.borrow(), "one two", "undo the delete");
+    h.key_with(Key::Char('z'), Modifiers::CTRL);
+    h.frame(f);
+    assert_eq!(*text.borrow(), "one", "undo the second burst of typing");
+    h.key_with(Key::Char('z'), Modifiers::CTRL);
+    h.frame(f);
+    assert_eq!(*text.borrow(), "", "and the first");
+    h.key_with(Key::Char('y'), Modifiers::CTRL);
+    h.frame(f);
+    assert_eq!(*text.borrow(), "one", "redo");
+    h.key_with(Key::Char('z'), Modifiers::CTRL | Modifiers::SHIFT);
+    h.frame(f);
+    assert_eq!(*text.borrow(), "one two", "Ctrl+Shift+Z is redo too");
+    h.advance(2.0);
+    h.type_text("!");
+    h.frame(f);
+    h.key_with(Key::Char('y'), Modifiers::CTRL);
+    h.frame(f);
+    assert_eq!(*text.borrow(), "one two!", "a new edit drops the redo branch");
+}

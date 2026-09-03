@@ -136,3 +136,29 @@ fn maximize_by_key_and_by_menu() {
     assert_eq!(shell.screen.maximized, None);
     assert_eq!(shell.screen.layouts().len(), 2, "back to the split");
 }
+
+#[test]
+fn dragging_a_header_onto_another_area_swaps_them() {
+    let mut h = Harness::new(1000.0, 700.0);
+    let mut shell: Shell<Tiny> = Shell::new(0);
+    let right = shell.screen.split(0, Axis::Horizontal, 0.5, 1).unwrap();
+    let mut host = Tiny::default();
+    h.shell_frame(&mut shell, &mut host);
+    let grip = h.rect_of(WidgetId::ROOT.with_u64(0).with("header").with("grip")).expect("header grip");
+    let target = shell.screen.layout_of(right).unwrap().body.center();
+    h.move_to(grip.center());
+    h.press();
+    h.shell_frame(&mut shell, &mut host);
+    h.move_to(target);
+    let out = h.shell_frame(&mut shell, &mut host);
+    assert_eq!(out.cursor, lntrn_ui::CursorIcon::Grabbing, "a drag is under way");
+    h.release();
+    h.shell_settle(&mut shell, &mut host, 3);
+    assert_eq!(shell.screen.area(0).unwrap().editor, 1, "the left area now hosts the right's editor");
+    assert_eq!(shell.screen.area(right).unwrap().editor, 0);
+    assert_eq!(shell.screen.active, Some(right));
+    // A plain click on the grip (no movement) swaps nothing.
+    h.advance(1.0);
+    press_release(&mut h, &mut shell, &mut host, grip.center());
+    assert_eq!(shell.screen.area(0).unwrap().editor, 1);
+}

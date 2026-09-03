@@ -28,6 +28,32 @@ impl Trigger {
         Self { key: None, button: Some(button), mods, press: true, double: false }
     }
 
+    /// `Ctrl+S`, `Right Click`, `Double Left Click`, `F3 (release)`.
+    pub fn label(&self) -> String {
+        let mut s = self.mods.label();
+        match (self.key, self.button) {
+            (Some(k), _) => s.push_str(&k.label()),
+            (None, Some(b)) => {
+                if self.double {
+                    s.push_str("Double ");
+                }
+                s.push_str(match b {
+                    MouseButton::Left => "Left Click",
+                    MouseButton::Right => "Right Click",
+                    MouseButton::Middle => "Middle Click",
+                    MouseButton::Back => "Back Button",
+                    MouseButton::Forward => "Forward Button",
+                    MouseButton::Other(_) => "Mouse Button",
+                });
+            }
+            (None, None) => s.push_str("(unbound)"),
+        }
+        if !self.press {
+            s.push_str(" (release)");
+        }
+        s
+    }
+
     pub fn matches(&self, ev: &Event) -> bool {
         match ev {
             Event::Key { key, pressed, mods, .. } => {
@@ -173,5 +199,7 @@ mod tests {
         assert!(k.resolve(&[CTX_WINDOW], &release, |_| true).is_none());
         let click = Event::Button { button: MouseButton::Left, pressed: true, pos: Vec2::ZERO, mods: Modifiers::NONE };
         assert!(Trigger::button(MouseButton::Left, Modifiers::NONE).matches(&click));
+        assert_eq!(Trigger::key(Key::Char('s'), Modifiers::CTRL | Modifiers::SHIFT).label(), "Ctrl+Shift+S");
+        assert_eq!(Trigger::button(MouseButton::Right, Modifiers::NONE).label(), "Right Click");
     }
 }

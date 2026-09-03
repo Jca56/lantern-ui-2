@@ -98,6 +98,55 @@ pub enum Key {
     Unknown,
 }
 
+impl Key {
+    /// How the key is written in a keymap editor: `S`, `F3`, `Left`, `Space`.
+    pub fn label(self) -> String {
+        match self {
+            Key::Char(' ') | Key::Space => "Space".to_owned(),
+            Key::Char(c) => c.to_uppercase().collect(),
+            Key::Escape => "Esc".to_owned(),
+            Key::Enter => "Enter".to_owned(),
+            Key::Tab => "Tab".to_owned(),
+            Key::Backspace => "Backspace".to_owned(),
+            Key::Delete => "Delete".to_owned(),
+            Key::Insert => "Insert".to_owned(),
+            Key::ArrowLeft => "Left".to_owned(),
+            Key::ArrowRight => "Right".to_owned(),
+            Key::ArrowUp => "Up".to_owned(),
+            Key::ArrowDown => "Down".to_owned(),
+            Key::Home => "Home".to_owned(),
+            Key::End => "End".to_owned(),
+            Key::PageUp => "Page Up".to_owned(),
+            Key::PageDown => "Page Down".to_owned(),
+            Key::F(n) => format!("F{n}"),
+            Key::Shift => "Shift".to_owned(),
+            Key::Control => "Ctrl".to_owned(),
+            Key::Alt => "Alt".to_owned(),
+            Key::Super => "Super".to_owned(),
+            Key::CapsLock => "Caps Lock".to_owned(),
+            Key::Unknown => "?".to_owned(),
+        }
+    }
+
+    /// A modifier on its own, not something to bind.
+    pub fn is_modifier(self) -> bool {
+        matches!(self, Key::Shift | Key::Control | Key::Alt | Key::Super | Key::CapsLock)
+    }
+}
+
+impl Modifiers {
+    /// `Ctrl+Shift+` style prefix (empty with no modifiers).
+    pub fn label(self) -> String {
+        let mut s = String::new();
+        for (m, name) in [(Modifiers::CTRL, "Ctrl+"), (Modifiers::ALT, "Alt+"), (Modifiers::SHIFT, "Shift+"), (Modifiers::SUPER, "Super+")] {
+            if self.contains(m) {
+                s.push_str(name);
+            }
+        }
+        s
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Event {
     /// New surface size in physical pixels.
@@ -134,6 +183,16 @@ mod tests {
         assert!(Modifiers::NONE.is_empty());
         assert!(m.contains(Modifiers::CTRL));
         assert!(!m.contains(Modifiers::ALT));
+    }
+
+    #[test]
+    fn labels() {
+        assert_eq!(Key::Char('s').label(), "S");
+        assert_eq!(Key::F(3).label(), "F3");
+        assert_eq!(Key::ArrowLeft.label(), "Left");
+        assert_eq!((Modifiers::CTRL | Modifiers::SHIFT).label(), "Ctrl+Shift+");
+        assert_eq!(Modifiers::NONE.label(), "");
+        assert!(Key::Shift.is_modifier() && !Key::Char('a').is_modifier());
     }
 
     #[test]

@@ -5,7 +5,7 @@
 use lntrn_math::{Rect, Vec2};
 
 use crate::event::Key;
-use crate::state::CursorIcon;
+use crate::state::{CursorIcon, Snapshot};
 use crate::ui::{FILL, Sense, Ui};
 use crate::widgets::TextResponse;
 use crate::widgets::text_field::{Edit, byte_at_x, clipboard_key, insert_typed, next_boundary, prev_boundary, take_edits, x_at};
@@ -85,6 +85,12 @@ impl Ui<'_> {
                 *self.state.floats(id, [-1.0; 4]) = [-1.0; 4];
             }
             // ---- keys and typed text, in arrival order ----
+            let before = {
+                let te = self.state.text_edit(id);
+                Snapshot { text: value.clone(), cursor: te.cursor, anchor: te.anchor }
+            };
+            let now = self.state.now;
+            let mut stepped_history = false;
             for edit in take_edits(self.state) {
                 let k = match edit {
                     Edit::Text(t) => {
@@ -98,6 +104,21 @@ impl Ui<'_> {
                 };
                 if k.mods.ctrl() && matches!(k.key, Key::Char('c' | 'x' | 'v')) {
                     out.changed |= clipboard_key(self.state, id, k.key, value, true);
+                    continue;
+                }
+                if k.mods.ctrl() && matches!(k.key, Key::Char('z' | 'y')) {
+                    let te = self.state.text_edit(id);
+                    let current = Snapshot { text: value.clone(), cursor: te.cursor, anchor: te.anchor };
+                    let restored = if k.key == Key::Char('y') || k.mods.shift() { self.state.history(id).redo(current) } else { self.state.history(id).undo(current) };
+                    if let Some(s) = restored {
+                        *value = s.text;
+                        let te = self.state.text_edit(id);
+                        te.cursor = s.cursor.min(value.len());
+                        te.anchor = s.anchor.min(value.len());
+                        out.changed = true;
+                        stepped_history = true;
+                        *self.state.floats(id, [-1.0; 4]) = [-1.0; 4];
+                    }
                     continue;
                 }
                 let te = self.state.text_edit(id);
@@ -197,6 +218,9 @@ impl Ui<'_> {
                 }
             }
             if out.changed {
+                if !stepped_history && *value != before.text {
+                    self.state.history(id).record(before, now, 0.8);
+                }
                 self.text.line_ranges(value, &style, width as f32, &mut rows);
                 *self.state.floats(id, [-1.0; 4]) = [-1.0; 4];
             }

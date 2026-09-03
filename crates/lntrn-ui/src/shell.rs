@@ -17,7 +17,7 @@ use crate::screen::{AreaId, Axis, Screen};
 use crate::state::{CursorIcon, UiState};
 use crate::theme::Metrics;
 use crate::titlebar::WindowCommand;
-use crate::ui::Ui;
+use crate::ui::{Sense, Ui};
 
 /// What the app needs to know after a rebuild.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -55,6 +55,8 @@ pub struct Shell<H: Host> {
     pub prefs: Prefs,
     pub(crate) popup: Option<Popup>,
     pub(crate) drag_sep: Option<usize>,
+    /// An area whose header grip is being dragged, to drop on another.
+    pub(crate) drag_area: Option<AreaId>,
     pub(crate) toasts: Vec<crate::toasts::Toast>,
 }
 
@@ -62,7 +64,7 @@ impl<H: Host> Shell<H> {
     /// One area hosting `editor`. Split [`Shell::screen`] for a richer
     /// starting layout.
     pub fn new(editor: H::Editor) -> Self {
-        Self { screen: Screen::new(editor), state: UiState::new(), prefs: Prefs::default(), popup: None, drag_sep: None, toasts: Vec::new() }
+        Self { screen: Screen::new(editor), state: UiState::new(), prefs: Prefs::default(), popup: None, drag_sep: None, drag_area: None, toasts: Vec::new() }
     }
 
     /// Metrics for the current preferences at `window_scale`.
@@ -245,6 +247,7 @@ impl<H: Host> Shell<H> {
         let maximized = self.screen.maximized;
         let mut actions = Vec::new();
         let mut changed_globals = false;
+        let mut grip_pressed: Option<AreaId> = None;
         for l in &layouts {
             let active = self.screen.active == Some(l.area);
             let Some(area) = self.screen.area_mut(l.area) else {
@@ -280,7 +283,13 @@ impl<H: Host> Shell<H> {
                 let style = ui.text_style();
                 let menu_w = ui.measure("⋮", &style) + ui.m.pad * 2.0;
                 let spacer = (ui.avail_width() - menu_w - ui.m.gap).max(0.0);
-                ui.alloc(Vec2::new(spacer, 1.0));
+                // The empty stretch of the header is a grip: drag it onto
+                // another area to swap the two.
+                let grip = ui.alloc(Vec2::new(spacer, ui.m.widget_h));
+                let g = ui.interact(ui.id("grip"), grip, Sense::DRAG);
+                if g.pressed {
+                    grip_pressed = Some(l.area);
+                }
                 let max_label = if maximized == Some(l.area) { "Restore" } else { "Maximize" };
                 if let Some(i) = ui.menu_button("⋮", &[max_label, "Split Left | Right", "Split Top | Bottom", "Close Area"]) {
                     actions.push(match i {
@@ -309,6 +318,39 @@ impl<H: Host> Shell<H> {
             draw.push_clip_absolute(l.rect);
             draw.stroke_rect(l.rect, m.focus_border, 0.0, theme.focus);
             draw.pop_clip();
+        }
+
+        // ---- dragging an area onto another swaps them --------------------
+        if let Some(a) = grip_pressed {
+            self.drag_area = Some(a);
+        }
+        let mut drag_cursor = None;
+        if let Some(source) = self.drag_area {
+            let moved = (self.state.pointer - self.state.press_pos).length() > m.px(8.0);
+            let target = self.screen.area_at(self.state.pointer).filter(|&t| t != source);
+            if self.state.released {
+                if moved && let Some(t) = target {
+                    self.screen.swap(source, t);
+                    self.screen.active = Some(t);
+                }
+                self.drag_area = None;
+                self.state.request_rebuild = true;
+            } else if moved {
+                drag_cursor = Some(CursorIcon::Grabbing);
+                draw.set_layer(3);
+                if let Some(l) = self.screen.layout_of(source) {
+                    draw.push_clip_absolute(l.rect);
+                    draw.rect(l.rect, theme.focus.fade(0.12));
+                    draw.pop_clip();
+                }
+                if let Some(l) = target.and_then(|t| self.screen.layout_of(t)) {
+                    draw.push_clip_absolute(l.rect);
+                    draw.rect(l.rect, theme.accent.fade(0.18));
+                    draw.stroke_rect(l.rect, m.focus_border * 2.0, 0.0, theme.accent);
+                    draw.pop_clip();
+                }
+                draw.set_layer(0);
+            }
         }
         self.draw_toasts(draw, text, &theme, m, window);
 
@@ -364,6 +406,8 @@ impl<H: Host> Shell<H> {
         self.state.end_frame();
         let cursor = if captured {
             CursorIcon::Grabbing
+        } else if let Some(c) = drag_cursor {
+            c
         } else if edge_cursor != CursorIcon::Default {
             edge_cursor
         } else {

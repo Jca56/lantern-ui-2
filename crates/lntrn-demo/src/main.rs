@@ -19,10 +19,11 @@ enum Editor {
     Gallery,
     Preferences,
     Notes,
+    Keys,
     Empty,
 }
 
-const EDITORS: [Editor; 4] = [Editor::Gallery, Editor::Preferences, Editor::Notes, Editor::Empty];
+const EDITORS: [Editor; 5] = [Editor::Gallery, Editor::Preferences, Editor::Notes, Editor::Keys, Editor::Empty];
 
 /// Palette entries: (action id, label).
 const PALETTE: [(&str, &str); 8] = [
@@ -144,6 +145,7 @@ impl Host for Demo {
             Editor::Gallery => "Widget Gallery",
             Editor::Preferences => "Preferences",
             Editor::Notes => "Notes",
+            Editor::Keys => "Key Bindings",
             Editor::Empty => "Empty",
         }
     }
@@ -211,6 +213,14 @@ impl Host for Demo {
                 if ui.text_area("notes", &mut self.notes, None).committed {
                     cx.request(ShellRequest::PathDialog { action: Action::new("demo.saved"), save: true, suggest: std::env::var_os("HOME").map(std::path::PathBuf::from).unwrap_or_default().join("notes.txt").display().to_string() });
                 }
+                false
+            }
+            Editor::Keys => {
+                ui.heading("Key Bindings");
+                ui.label_dim("Click a key to rebind it; type an action id beside it.");
+                ui.scroll_area("keys", None, |ui| {
+                    ui.keymap_editor("keys", &mut self.keys);
+                });
                 false
             }
             Editor::Empty => {

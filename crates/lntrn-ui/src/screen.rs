@@ -177,6 +177,15 @@ impl<E: Copy + PartialEq, S: Default> Screen<E, S> {
         true
     }
 
+    /// Exchange what two areas hold (editor and state); the tree stays.
+    pub fn swap(&mut self, a: AreaId, b: AreaId) -> bool {
+        if a == b || self.area(a).is_none() || self.area(b).is_none() {
+            return false;
+        }
+        self.areas.swap(a, b);
+        true
+    }
+
     /// Give `area` the whole window, or put the layout back if it has it.
     pub fn toggle_maximize(&mut self, area: AreaId) {
         if self.area(area).is_none() {
@@ -504,6 +513,12 @@ mod tests {
         s.toggle_maximize(right);
         s.layout(win(), 45.0, 10.0);
         assert_eq!(s.layouts().len(), 2, "restored");
+        assert!(s.swap(0, right));
+        assert_eq!(s.area(0).unwrap().editor, K::Prefs);
+        assert_eq!(s.area(0).unwrap().state, 7, "state travels with the editor");
+        assert_eq!(s.area(right).unwrap().editor, K::Empty);
+        assert!(!s.swap(0, 0) && !s.swap(0, 99));
+        assert!(s.swap(right, 0));
         s.toggle_maximize(right);
         assert!(s.join(right), "joining the maximized area away clears it");
         assert_eq!(s.maximized, None);

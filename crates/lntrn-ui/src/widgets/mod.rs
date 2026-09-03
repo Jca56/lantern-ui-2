@@ -4,6 +4,7 @@
 mod basic;
 mod color;
 mod dropdown;
+mod keymap_editor;
 mod knob;
 mod scroll;
 mod slider;
