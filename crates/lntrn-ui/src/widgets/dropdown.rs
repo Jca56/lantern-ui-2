@@ -27,7 +27,7 @@ impl Ui<'_> {
         };
         let rect = self.alloc(Vec2::new(w, self.m.widget_h));
         let mut r = self.interact(id, rect, Sense::CLICK);
-        let focused = self.focusable(id);
+        let focused = self.focusable(id, rect);
         self.key_click(id, &mut r);
         if r.hovered {
             self.state.cursor_icon = CursorIcon::Pointer;
@@ -84,7 +84,7 @@ impl Ui<'_> {
         let w = self.measure(label, &style) + self.m.pad * 2.0;
         let rect = self.alloc(Vec2::new(w, self.m.widget_h));
         let mut r = self.interact(id, rect, Sense::CLICK);
-        self.focusable(id);
+        self.focusable(id, rect);
         self.key_click(id, &mut r);
         if r.hovered {
             self.state.cursor_icon = CursorIcon::Pointer;

@@ -64,6 +64,25 @@ impl Ui<'_> {
         f(self);
         self.pop_id();
         let content_h = (self.cursor().y - start.y - self.m.gap).max(0.0);
+        // Keyboard focus that just landed on something outside the viewport
+        // (and inside this area's columns) scrolls to it.
+        if self.state.focus_moved
+            && let Some(fr) = self.state.focus_rect
+            && fr.min.x >= viewport.min.x - 1.0
+            && fr.max.x <= viewport.max.x + 1.0
+        {
+            if fr.min.y < viewport.min.y {
+                offset -= viewport.min.y - fr.min.y + self.m.gap;
+            } else if fr.max.y > viewport.max.y {
+                offset += fr.max.y - viewport.max.y + self.m.gap;
+            }
+            let max_off = (content_h - viewport.height()).max(0.0);
+            let clamped = offset.clamp(0.0, max_off);
+            if clamped != mem.offset {
+                self.state.request_rebuild = true;
+            }
+            offset = clamped;
+        }
         self.draw.pop_clip();
         self.set_clip(saved_clip);
         self.set_avail_width(saved_avail);

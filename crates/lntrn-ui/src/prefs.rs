@@ -21,12 +21,17 @@ props! {
 pub fn draw(ui: &mut Ui, prefs: &mut Prefs) -> bool {
     let mut changed = false;
     ui.scroll_area("prefs", None, |ui| {
-        changed = ui.props_panel(prefs);
+        ui.heading("Look");
+        ui.row(|ui| {
+            for (name, make) in Theme::PRESETS {
+                if ui.button(name).clicked {
+                    prefs.theme = make();
+                    changed = true;
+                }
+            }
+        });
         ui.space(ui.m.gap);
-        if ui.button("Reset Theme").clicked {
-            prefs.theme = Theme::default();
-            changed = true;
-        }
+        changed |= ui.props_panel(prefs);
     });
     changed
 }

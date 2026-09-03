@@ -8,6 +8,8 @@ use lntrn_core::{block_on, log_info};
 pub enum GpuError {
     NoAdapter(String),
     NoDevice(String),
+    /// The window handles given to the embedded harness were refused.
+    Surface(String),
 }
 
 impl fmt::Display for GpuError {
@@ -15,6 +17,7 @@ impl fmt::Display for GpuError {
         match self {
             GpuError::NoAdapter(e) => write!(f, "no compatible GPU adapter: {e}"),
             GpuError::NoDevice(e) => write!(f, "could not open GPU device: {e}"),
+            GpuError::Surface(e) => write!(f, "could not make a surface: {e}"),
         }
     }
 }

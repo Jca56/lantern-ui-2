@@ -13,7 +13,7 @@ impl Ui<'_> {
         let id = self.id(label);
         let rect = self.alloc(Vec2::new(FILL, self.m.widget_h));
         let mut r = self.interact(id, rect, Sense::CLICK);
-        self.focusable(id);
+        self.focusable(id, rect);
         self.key_click(id, &mut r);
         if r.hovered {
             self.state.cursor_icon = CursorIcon::Pointer;

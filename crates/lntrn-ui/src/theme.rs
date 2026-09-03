@@ -62,7 +62,63 @@ props! {
     }
 }
 
+/// Makes a theme preset.
+pub type ThemeMaker = fn() -> Theme;
+
 impl Theme {
+    /// The built-in looks, by name: what the Preferences editor offers.
+    pub const PRESETS: [(&'static str, ThemeMaker); 3] = [("Dark", <Theme as Default>::default), ("Light", Theme::light), ("High Contrast", Theme::high_contrast)];
+
+    /// Paper panels and dark ink, the same amber accent.
+    pub fn light() -> Theme {
+        Theme {
+            bg: Color::hex(0xD6D6DB),
+            header: Color::hex(0xC3C3CA),
+            panel: Color::hex(0xEDEDF0),
+            widget: Color::hex(0xDCDCE2),
+            field: Color::hex(0xFFFFFF),
+            text: Color::hex(0x141418),
+            text_dim: Color::hex(0x55555E),
+            accent: Color::hex(0xE58A00),
+            accent_text: Color::hex(0x1A1508),
+            selection: Color::hex(0x3868C8),
+            selection_text: Color::hex(0xFFFFFF),
+            focus: Color::hex(0x2A5CC0),
+            close: Color::hex(0xD9432F),
+            border_dark: Color::hex(0x8E8E98),
+            border_light: Color::hex(0xFFFFFF),
+            gradient: 0.07,
+            ..Theme::default()
+        }
+    }
+
+    /// Black and white, hard edges, bigger text.
+    pub fn high_contrast() -> Theme {
+        Theme {
+            bg: Color::BLACK,
+            header: Color::hex(0x101010),
+            panel: Color::BLACK,
+            widget: Color::hex(0x222222),
+            field: Color::hex(0x060606),
+            text: Color::WHITE,
+            text_dim: Color::hex(0xD8D8D8),
+            accent: Color::hex(0xFFD400),
+            accent_text: Color::BLACK,
+            selection: Color::hex(0x00A8FF),
+            selection_text: Color::BLACK,
+            focus: Color::WHITE,
+            close: Color::hex(0xFF3B2F),
+            border_dark: Color::hex(0x8A8A8A),
+            border_light: Color::WHITE,
+            gradient: 0.0,
+            text_size: 30.0,
+            heading_size: 35.0,
+            widget_height: 55.0,
+            header_height: 55.0,
+            ..Theme::default()
+        }
+    }
+
     /// Lighter end of a shaded control.
     pub fn top(&self, base: Color) -> Color {
         base.scale_rgb(1.0 + self.gradient)
@@ -158,6 +214,20 @@ mod tests {
         let m1 = t.metrics(1.0);
         assert_eq!(m1.header_h, 45.0);
         assert_eq!(m1.gap, 5.0);
+    }
+
+    #[test]
+    fn presets_are_distinct_and_readable() {
+        let dark = Theme::default();
+        let light = Theme::light();
+        let hc = Theme::high_contrast();
+        let lum = |c: Color| c.to_linear().luminance_linear();
+        assert!(lum(light.panel) > 0.5 && lum(light.text) < 0.05, "light: dark ink on paper");
+        assert!(lum(dark.panel) < 0.05 && lum(dark.text) > 0.8);
+        assert!(hc.text_size > dark.text_size && hc.gradient == 0.0);
+        assert_eq!(Theme::PRESETS.len(), 3);
+        assert_eq!((Theme::PRESETS[1].1)().panel, light.panel);
+        assert_eq!((Theme::PRESETS[0].1)().panel, dark.panel);
     }
 
     #[test]

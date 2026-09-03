@@ -201,3 +201,54 @@ fn progress_and_columns_lay_out() {
     let tall = h.rect_of(WidgetId::ROOT.with_index(1).with("tall")).unwrap();
     assert!(after.min.y >= tall.max.y, "layout continues below the tallest column");
 }
+
+#[test]
+fn tab_scrolls_the_focused_widget_into_view() {
+    let mut h = Harness::new(600.0, 300.0);
+    let f = |ui: &mut Ui| {
+        ui.scroll_area("list", None, |ui| {
+            for i in 0..30 {
+                ui.push_index(i);
+                ui.button_wide(&format!("Button {i}"));
+                ui.pop_id();
+            }
+        });
+    };
+    h.frame(f);
+    let list = WidgetId::ROOT.with("list");
+    assert_eq!(h.state.scroll(list).offset, 0.0);
+    // Tab through the first ten buttons: the tenth is below the 280px
+    // viewport, so the area scrolls to show it.
+    for _ in 0..10 {
+        h.key(Key::Tab);
+        h.settle(3, f);
+    }
+    assert_eq!(h.state.focus, Some(list.with_index(9).with("Button 9")));
+    assert!(h.state.scroll(list).offset > 0.0, "scrolled to the focused button");
+    let r = h.rect_of(list.with_index(9).with("Button 9")).unwrap();
+    assert!(r.max.y <= 300.0 && r.min.y >= 0.0, "in view: {r:?}");
+    // Shift+Tab back to the top scrolls up again.
+    for _ in 0..9 {
+        h.key_with(Key::Tab, Modifiers::SHIFT);
+        h.settle(3, f);
+    }
+    assert_eq!(h.state.scroll(list).offset, 0.0);
+}
+
+#[test]
+fn theme_presets_apply_from_preferences() {
+    use lntrn_ui::{Prefs, Theme, prefs};
+    let mut h = Harness::new(900.0, 700.0);
+    let p = RefCell::new(Prefs::default());
+    let f = |ui: &mut Ui| {
+        prefs::draw(ui, &mut p.borrow_mut());
+    };
+    h.click_on(WidgetId::ROOT.with("prefs").with("Light"), f);
+    assert_eq!(p.borrow().theme.panel, Theme::light().panel);
+    h.advance(1.0);
+    h.click_on(WidgetId::ROOT.with("prefs").with("High Contrast"), f);
+    assert_eq!(p.borrow().theme.text_size, Theme::high_contrast().text_size);
+    h.advance(1.0);
+    h.click_on(WidgetId::ROOT.with("prefs").with("Dark"), f);
+    assert_eq!(p.borrow().theme.panel, Theme::default().panel);
+}

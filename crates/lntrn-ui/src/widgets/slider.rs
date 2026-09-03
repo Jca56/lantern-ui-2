@@ -30,7 +30,7 @@ impl Ui<'_> {
             return false;
         }
         let r = self.interact(id, rect, Sense::DRAG);
-        let focused = self.focusable(id);
+        let focused = self.focusable(id, rect);
         if r.double_clicked {
             self.begin_number_edit(id, *value);
         }
@@ -100,7 +100,7 @@ impl Ui<'_> {
             return false;
         }
         let r = self.interact(id, rect, Sense::DRAG);
-        let focused = self.focusable(id);
+        let focused = self.focusable(id, rect);
         if r.pressed {
             *self.state.drag_start(id) = *value;
         }

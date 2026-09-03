@@ -59,7 +59,7 @@ impl Ui<'_> {
         let id = self.id(label);
         let rect = self.alloc(size);
         let mut r = self.interact(id, rect, Sense::CLICK);
-        self.focusable(id);
+        self.focusable(id, rect);
         self.key_click(id, &mut r);
         if r.hovered {
             self.state.cursor_icon = CursorIcon::Pointer;
@@ -84,7 +84,7 @@ impl Ui<'_> {
     /// (face, ink) pair of an active button; `None` draws it as a plain button.
     pub fn icon_button_in(&mut self, id: WidgetId, rect: Rect, icon: Icon, lit: Option<(Color, Color)>, tip: &str) -> Response {
         let mut r = self.interact(id, rect, Sense::CLICK);
-        self.focusable(id);
+        self.focusable(id, rect);
         self.key_click(id, &mut r);
         if r.hovered {
             self.state.cursor_icon = CursorIcon::Pointer;
@@ -116,7 +116,7 @@ impl Ui<'_> {
         let w = if self.in_row() { box_size + self.m.gap + self.measure(label, &style) } else { FILL };
         let rect = self.alloc(Vec2::new(w, self.m.widget_h));
         let mut r = self.interact(id, rect, Sense::CLICK);
-        self.focusable(id);
+        self.focusable(id, rect);
         self.key_click(id, &mut r);
         if r.clicked {
             *value = !*value;
@@ -155,7 +155,7 @@ impl Ui<'_> {
         let id = self.id(label);
         let rect = self.alloc(Vec2::new(FILL, self.m.widget_h));
         let mut r = self.interact(id, rect, Sense::CLICK);
-        self.focusable(id);
+        self.focusable(id, rect);
         self.key_click(id, &mut r);
         if r.hovered {
             self.state.cursor_icon = CursorIcon::Pointer;
@@ -194,7 +194,7 @@ impl Ui<'_> {
             );
             let id = self.id(label).with_index(i);
             let mut r = self.interact(id, tr, Sense::CLICK);
-            self.focusable(id);
+            self.focusable(id, tr);
             self.key_click(id, &mut r);
             if r.clicked && *selected != i {
                 *selected = i;

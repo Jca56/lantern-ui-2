@@ -19,7 +19,7 @@ impl Ui<'_> {
         let rect = self.alloc(Vec2::new(w, sw));
         let swatch = Rect::from_min_size(rect.min, Vec2::splat(sw));
         let mut r = self.interact(id, swatch, Sense::CLICK);
-        self.focusable(id);
+        self.focusable(id, swatch);
         self.key_click(id, &mut r);
         if r.hovered {
             self.state.cursor_icon = CursorIcon::Pointer;

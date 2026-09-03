@@ -126,6 +126,12 @@ pub struct UiState {
     /// Draw focus rings: on after keyboard navigation, off again on a
     /// pointer press.
     pub focus_visible: bool,
+    /// Where the keyboard-focused widget was laid out this frame.
+    pub focus_rect: Option<Rect>,
+    /// Focus moved by keyboard since the previous frame: scroll areas bring
+    /// the new widget into view.
+    pub focus_moved: bool,
+    focus_moved_pending: bool,
     /// Time and place of the last press, for double clicks (frame clock).
     last_click: Option<(f64, Vec2)>,
     start: Instant,
@@ -202,6 +208,9 @@ impl UiState {
             clipboard: String::new(),
             focus_order: Vec::new(),
             focus_visible: false,
+            focus_rect: None,
+            focus_moved: false,
+            focus_moved_pending: false,
             last_click: None,
             start: Instant::now(),
             manual_time: None,
@@ -239,6 +248,8 @@ impl UiState {
         self.popup_seen = false;
         self.rects.clear();
         self.focus_order.clear();
+        self.focus_rect = None;
+        self.focus_moved = std::mem::take(&mut self.focus_moved_pending);
         self.wake_after = None;
         self.now = self.manual_time.unwrap_or_else(|| self.start.elapsed().as_secs_f64());
         let start = self.pointer;
@@ -316,6 +327,7 @@ impl UiState {
                 };
                 self.focus = Some(self.focus_order[next]);
                 self.focus_visible = true;
+                self.focus_moved_pending = true;
                 self.request_rebuild = true;
             }
         }

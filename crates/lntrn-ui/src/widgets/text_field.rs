@@ -138,7 +138,7 @@ impl Ui<'_> {
     /// The editor behind text fields and number typing. Draws into `rect`.
     pub fn text_edit_core(&mut self, id: WidgetId, rect: Rect, value: &mut String) -> TextResponse {
         let r = self.interact(id, rect, Sense::FOCUS);
-        self.focusable(id);
+        self.focusable(id, rect);
         if r.hovered {
             self.state.cursor_icon = CursorIcon::Text;
         }

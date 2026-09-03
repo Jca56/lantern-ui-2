@@ -42,7 +42,7 @@ impl Ui<'_> {
         let rect = self.alloc(Vec2::new(FILL, self.m.widget_h));
         let disc = Rect::from_min_size(rect.min, Vec2::splat(rect.height()));
         let mut r = self.interact(id, rect, Sense::CLICK);
-        let focused = self.focusable(id);
+        let focused = self.focusable(id, rect);
         self.key_click(id, &mut r);
         if r.hovered {
             self.state.cursor_icon = CursorIcon::Pointer;

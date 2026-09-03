@@ -41,7 +41,7 @@ impl Ui<'_> {
         let h = height.unwrap_or_else(|| self.remaining_height()).max(self.m.widget_h * 2.0);
         let rect = self.alloc(Vec2::new(FILL, h));
         let r = self.interact(id, rect, Sense::FOCUS);
-        self.focusable(id);
+        self.focusable(id, rect);
         if r.hovered {
             self.state.cursor_icon = CursorIcon::Text;
         }

@@ -4,10 +4,10 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use lntrn_core::{log_error, log_info, log_trace};
-use lntrn_math::{Rect, Vec2};
+use lntrn_core::{log_error, log_info};
+use lntrn_math::Vec2;
 use lntrn_render::wgpu;
-use lntrn_render::{DrawList, Gpu, Images, Pass2d, RenderGraph, SurfaceTarget, TexDesc, TexId, TexturePool, clear_pass};
+use lntrn_render::{DrawList, Gpu, Images, RenderGraph, TexId};
 use lntrn_text::TextEngine;
 use lntrn_ui::persist;
 use lntrn_ui::{CursorIcon, Event, Host, Modifiers, ResizeEdge, Shell, WindowCommand, WindowState};
@@ -17,9 +17,7 @@ use winit::event::{StartCause, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
-/// A popup closing or a value committing may ask for one more rebuild; this
-/// caps how many happen back to back before we present.
-const MAX_REBUILDS: usize = 4;
+use crate::frame::{Gfx, draw_frame, rebuild};
 
 /// How the window is made.
 #[derive(Clone, Debug)]
@@ -114,19 +112,15 @@ pub fn run<H: AppHost>(config: AppConfig, host: H, mut shell: Shell<H>) {
     }
 }
 
-struct Gfx {
+struct Win {
     window: Arc<Window>,
-    gpu: Gpu,
-    surface: SurfaceTarget,
-    pass2d: Pass2d,
-    images: Images,
-    pool: TexturePool,
+    gfx: Gfx,
     cursor: CursorIcon,
 }
 
 struct App<H: AppHost> {
     config: AppConfig,
-    gfx: Option<Gfx>,
+    win: Option<Win>,
     text: TextEngine,
     draw: DrawList,
     shell: Shell<H>,
@@ -149,7 +143,7 @@ impl<H: AppHost> App<H> {
         let t = std::time::Instant::now();
         let text = TextEngine::new(&config.sans, &config.mono);
         log_info!("fonts: {} faces in {:.0} ms", text.face_count(), t.elapsed().as_secs_f64() * 1000.0);
-        Self { config, gfx: None, text, draw: DrawList::new(), shell, host, events: Vec::new(), mods: Modifiers::NONE, pointer: Vec2::ZERO, scale: 1.0, dirty: true, wake: None, focused: true, quit: false }
+        Self { config, win: None, text, draw: DrawList::new(), shell, host, events: Vec::new(), mods: Modifiers::NONE, pointer: Vec2::ZERO, scale: 1.0, dirty: true, wake: None, focused: true, quit: false }
     }
 
     /// Write preferences and the layout for next time.
@@ -192,101 +186,51 @@ impl<H: AppHost> App<H> {
                 return;
             }
         };
-        let surface = SurfaceTarget::new(&gpu, surface, size.width, size.height);
-        let mut images = Images::new(&gpu);
-        let pass2d = Pass2d::new(&gpu, surface.format(), self.text.atlas(), &images);
-        self.host.init_gpu(&gpu, surface.format(), &mut images);
+        let mut gfx = Gfx::new(gpu, surface, size.width, size.height, &self.text);
+        self.host.init_gpu(&gfx.gpu, gfx.surface.format(), &mut gfx.images);
         log_info!("window: {}x{} @ {:.2}x", size.width, size.height, self.scale);
-        self.gfx = Some(Gfx { window, gpu, surface, pass2d, images, pool: TexturePool::new(), cursor: CursorIcon::Default });
+        self.win = Some(Win { window, gfx, cursor: CursorIcon::Default });
     }
 
     /// Rebuild the UI from the pending events (possibly more than once),
     /// then draw and present.
     fn render(&mut self) {
-        let Some(gfx) = self.gfx.as_mut() else {
+        let Some(win) = self.win.as_mut() else {
             return;
         };
-        let size = gfx.surface.size();
-        let window_rect = Rect::from_min_size(Vec2::ZERO, Vec2::new(size[0] as f64, size[1] as f64));
         let events = std::mem::take(&mut self.events);
-
-        let ws = WindowState { maximized: gfx.window.is_maximized(), focused: self.focused };
-        let mut out = None;
-        let mut evs: &[Event] = &events;
-        let mut command = None;
-        let mut again = true;
-        for _ in 0..MAX_REBUILDS {
-            self.draw.clear();
-            let o = self.shell.frame(&mut self.host, evs, window_rect, self.scale, ws, &mut self.text, &mut self.draw);
-            again = o.rebuild_again;
-            command = command.or(o.window_command);
-            if o.quit {
-                self.quit = true;
-            }
-            evs = &[];
-            // GPU-side queries resolve right away, then one more rebuild
-            // draws their result in this same frame. Doing it here (not after
-            // present) also means a failed swapchain acquire cannot swallow
-            // a click.
-            if self.host.after_rebuild(&gfx.gpu, &mut gfx.images, &mut self.shell) {
-                again = true;
-            }
-            out = Some(o);
-            if !again {
-                break;
-            }
-        }
-        if again {
+        let ws = WindowState { maximized: win.window.is_maximized(), focused: self.focused };
+        let (out, pending) = rebuild(&mut win.gfx, &mut self.host, &mut self.shell, &mut self.text, &mut self.draw, &events, self.scale, ws);
+        if pending {
             // Out of rebuilds with work still pending: finish it next frame.
             self.dirty = true;
         }
-        let out = out.expect("at least one rebuild");
+        if out.quit {
+            self.quit = true;
+        }
         self.wake = out.wake_after.map(|s| Instant::now() + Duration::from_secs_f64(s));
 
-        if out.cursor != gfx.cursor {
-            gfx.cursor = out.cursor;
-            gfx.window.set_cursor(cursor_icon(out.cursor));
+        if out.cursor != win.cursor {
+            win.cursor = out.cursor;
+            win.window.set_cursor(cursor_icon(out.cursor));
         }
-        match command {
+        match out.window_command {
             Some(WindowCommand::Drag) => {
-                let _ = gfx.window.drag_window();
+                let _ = win.window.drag_window();
             }
-            Some(WindowCommand::Minimize) => gfx.window.set_minimized(true),
-            Some(WindowCommand::ToggleMaximize) => gfx.window.set_maximized(!gfx.window.is_maximized()),
+            Some(WindowCommand::Minimize) => win.window.set_minimized(true),
+            Some(WindowCommand::ToggleMaximize) => win.window.set_maximized(!win.window.is_maximized()),
             Some(WindowCommand::Close) => self.quit = true,
             Some(WindowCommand::Resize(edge)) => {
-                let _ = gfx.window.drag_resize_window(resize_direction(edge));
+                let _ = win.window.drag_resize_window(resize_direction(edge));
             }
             None => {}
         }
 
-        let Some(frame) = gfx.surface.acquire(&gfx.gpu) else {
-            gfx.window.request_redraw();
-            return;
-        };
-        let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder = gfx.gpu.create_encoder("lantern frame");
-
-        let (pass2d, draw, text, images) = (&mut gfx.pass2d, &self.draw, &mut self.text, &gfx.images);
-        let clear = out.clear;
-        let mut graph = RenderGraph::new();
-        let backbuffer = graph.import(&view);
-        let depth = self.host.wants_depth().then(|| graph.transient(TexDesc::depth("depth", size[0], size[1])));
-        let writes: Vec<TexId> = std::iter::once(backbuffer).chain(depth).collect();
-        graph.add_node("clear", &[], &writes, move |_, enc, views| {
-            clear_pass(enc, views.get(backbuffer), depth.map(|d| views.get(d)), clear);
-        });
-        self.host.render(&mut RenderCx { gpu: &gfx.gpu, graph: &mut graph, backbuffer, depth, size });
-        graph.add_node("ui", &[], &[backbuffer], move |gpu, enc, views| {
-            pass2d.draw(gpu, enc, views.get(backbuffer), size, draw, text.atlas_mut(), images, None);
-        });
-        graph.execute(&gfx.gpu, &mut gfx.pool, &mut encoder);
-        gfx.pool.end_frame();
-
-        gfx.gpu.queue.submit([encoder.finish()]);
-        gfx.window.pre_present_notify();
-        frame.present();
-        log_trace!("frame: {} vertices", self.draw.vertex_count());
+        let window = Arc::clone(&win.window);
+        if !draw_frame(&mut win.gfx, &mut self.host, &mut self.text, &self.draw, out.clear, || window.pre_present_notify()) {
+            win.window.request_redraw();
+        }
     }
 }
 
@@ -320,7 +264,7 @@ fn resize_direction(e: ResizeEdge) -> winit::window::ResizeDirection {
 
 impl<H: AppHost> ApplicationHandler for App<H> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.gfx.is_none() {
+        if self.win.is_none() {
             self.init_gfx(event_loop);
             self.dirty = true;
         }
@@ -337,9 +281,8 @@ impl<H: AppHost> ApplicationHandler for App<H> {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => {
-                if let Some(g) = self.gfx.as_mut() {
-                    g.surface.resize(&g.gpu, size.width, size.height);
-                    g.pool.trim();
+                if let Some(w) = self.win.as_mut() {
+                    w.gfx.resize(size.width, size.height);
                 }
             }
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => self.scale = scale_factor,
@@ -366,9 +309,9 @@ impl<H: AppHost> ApplicationHandler for App<H> {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        if self.dirty && let Some(g) = &self.gfx {
+        if self.dirty && let Some(w) = &self.win {
             self.dirty = false;
-            g.window.request_redraw();
+            w.window.request_redraw();
         }
         // Sleep until input, or until the running animation's next frame.
         event_loop.set_control_flow(match self.wake {

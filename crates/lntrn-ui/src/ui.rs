@@ -342,15 +342,19 @@ impl<'a> Ui<'a> {
 
     // ---- keyboard focus ---------------------------------------------------
 
-    /// Register `id` as a stop on the Tab order and report whether it has
-    /// keyboard focus. Call after [`Self::interact`]: a press on the widget
-    /// focuses it too.
-    pub fn focusable(&mut self, id: WidgetId) -> bool {
+    /// Register `id` (laid out at `rect`) as a stop on the Tab order and
+    /// report whether it has keyboard focus. Call after [`Self::interact`]:
+    /// a press on the widget focuses it too.
+    pub fn focusable(&mut self, id: WidgetId, rect: Rect) -> bool {
         self.state.focus_order.push(id);
         if self.state.pressed && self.state.active == Some(id) {
             self.state.focus = Some(id);
         }
-        self.state.focus == Some(id)
+        let focused = self.state.focus == Some(id);
+        if focused {
+            self.state.focus_rect = Some(rect);
+        }
+        focused
     }
 
     /// Enter or Space on the keyboard-focused widget counts as a click.

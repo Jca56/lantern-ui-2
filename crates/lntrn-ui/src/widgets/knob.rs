@@ -50,7 +50,7 @@ impl Ui<'_> {
         }
 
         let r = self.interact(id, circle, Sense::DRAG);
-        let focused = self.focusable(id);
+        let focused = self.focusable(id, circle);
         if r.double_clicked && !typing {
             self.begin_number_edit(id, *value);
             self.state.request_rebuild = true;
