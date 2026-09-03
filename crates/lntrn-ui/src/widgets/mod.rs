@@ -7,6 +7,7 @@ mod dropdown;
 mod knob;
 mod scroll;
 mod slider;
+mod text_area;
 mod text_field;
 mod tree;
 

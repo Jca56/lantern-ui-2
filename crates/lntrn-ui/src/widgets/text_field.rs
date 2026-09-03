@@ -19,16 +19,16 @@ pub struct TextResponse {
     pub focused: bool,
 }
 
-fn prev_boundary(s: &str, i: usize) -> usize {
+pub(crate) fn prev_boundary(s: &str, i: usize) -> usize {
     s[..i].chars().next_back().map_or(0, |c| i - c.len_utf8())
 }
 
-fn next_boundary(s: &str, i: usize) -> usize {
+pub(crate) fn next_boundary(s: &str, i: usize) -> usize {
     s[i..].chars().next().map_or(i, |c| i + c.len_utf8())
 }
 
 /// Pen x at byte `b`, from a cluster-boundary advance table.
-fn x_at(adv: &[(u32, f32)], b: usize) -> f64 {
+pub(crate) fn x_at(adv: &[(u32, f32)], b: usize) -> f64 {
     let b = b as u32;
     match adv.binary_search_by_key(&b, |&(o, _)| o) {
         Ok(i) => adv[i].1 as f64,
@@ -46,10 +46,85 @@ fn x_at(adv: &[(u32, f32)], b: usize) -> f64 {
 }
 
 /// Byte offset whose pen x is closest to `x`.
-fn byte_at_x(adv: &[(u32, f32)], x: f64) -> usize {
+pub(crate) fn byte_at_x(adv: &[(u32, f32)], x: f64) -> usize {
     adv.iter()
         .min_by(|a, b| (a.1 as f64 - x).abs().total_cmp(&(b.1 as f64 - x).abs()))
         .map_or(0, |a| a.0 as usize)
+}
+
+/// One step of editing input, in the order it arrived.
+pub(crate) enum Edit {
+    Key(crate::state::KeyPress),
+    Text(String),
+}
+
+/// Take this frame's keys (except Tab, which the focus walk keeps) and
+/// typed text, in arrival order.
+pub(crate) fn take_edits(state: &mut crate::state::UiState) -> Vec<Edit> {
+    let mut out: Vec<(u32, Edit)> = Vec::new();
+    state.keys.retain(|k| {
+        if k.key == Key::Tab {
+            true
+        } else {
+            out.push((k.seq, Edit::Key(*k)));
+            false
+        }
+    });
+    for (seq, t) in state.text_input.drain(..) {
+        out.push((seq, Edit::Text(t)));
+    }
+    out.sort_by_key(|(seq, _)| *seq);
+    out.into_iter().map(|(_, e)| e).collect()
+}
+
+/// Insert typed text at the selection. Returns `true` if anything went in.
+pub(crate) fn insert_typed(state: &mut crate::state::UiState, id: WidgetId, value: &mut String, typed: &str) -> bool {
+    let typed: String = typed.chars().filter(|c| !c.is_control()).collect();
+    if typed.is_empty() {
+        return false;
+    }
+    let te = state.text_edit(id);
+    let (s0, s1) = te.selection();
+    value.replace_range(s0..s1, &typed);
+    te.cursor = s0 + typed.len();
+    te.anchor = te.cursor;
+    true
+}
+
+/// Ctrl+C / Ctrl+X / Ctrl+V on the text `id` edits. Returns `true` when
+/// the text changed. `multiline` keeps newlines in pasted text.
+pub(crate) fn clipboard_key(state: &mut crate::state::UiState, id: WidgetId, key: Key, value: &mut String, multiline: bool) -> bool {
+    let (s0, s1) = state.text_edit(id).selection();
+    match key {
+        Key::Char('c') => {
+            if s1 > s0 {
+                state.clipboard = value[s0..s1].to_owned();
+            }
+            false
+        }
+        Key::Char('x') => {
+            if s1 > s0 {
+                state.clipboard = value[s0..s1].to_owned();
+                value.replace_range(s0..s1, "");
+                let te = state.text_edit(id);
+                te.cursor = s0;
+                te.anchor = s0;
+                return true;
+            }
+            false
+        }
+        _ => {
+            let pasted: String = state.clipboard.chars().filter(|c| !c.is_control() || (multiline && *c == '\n')).collect();
+            if pasted.is_empty() {
+                return false;
+            }
+            value.replace_range(s0..s1, &pasted);
+            let te = state.text_edit(id);
+            te.cursor = s0 + pasted.len();
+            te.anchor = te.cursor;
+            true
+        }
+    }
 }
 
 impl Ui<'_> {
@@ -93,46 +168,17 @@ impl Ui<'_> {
                 let b = byte_at_x(&adv, self.state.pointer.x - inner.min.x + scroll);
                 self.state.text_edit(id).cursor = b;
             }
-            // Keyboard. Tab is left for the focus walk.
-            let mut keys = Vec::new();
-            self.state.keys.retain(|k| {
-                if k.key == Key::Tab {
-                    true
-                } else {
-                    keys.push(*k);
-                    false
-                }
-            });
-            for k in keys {
-                if k.mods.ctrl() && matches!(k.key, Key::Char('c' | 'x' | 'v')) {
-                    let (s0, s1) = self.state.text_edit(id).selection();
-                    match k.key {
-                        Key::Char('c') => {
-                            if s1 > s0 {
-                                self.state.clipboard = value[s0..s1].to_owned();
-                            }
-                        }
-                        Key::Char('x') => {
-                            if s1 > s0 {
-                                self.state.clipboard = value[s0..s1].to_owned();
-                                value.replace_range(s0..s1, "");
-                                let te = self.state.text_edit(id);
-                                te.cursor = s0;
-                                te.anchor = s0;
-                                out.changed = true;
-                            }
-                        }
-                        _ => {
-                            let pasted: String = self.state.clipboard.chars().filter(|c| !c.is_control()).collect();
-                            if !pasted.is_empty() {
-                                value.replace_range(s0..s1, &pasted);
-                                let te = self.state.text_edit(id);
-                                te.cursor = s0 + pasted.len();
-                                te.anchor = te.cursor;
-                                out.changed = true;
-                            }
-                        }
+            // Keyboard and typed text, in the order they arrived.
+            for edit in take_edits(self.state) {
+                let k = match edit {
+                    Edit::Text(t) => {
+                        out.changed |= insert_typed(self.state, id, value, &t);
+                        continue;
                     }
+                    Edit::Key(k) => k,
+                };
+                if k.mods.ctrl() && matches!(k.key, Key::Char('c' | 'x' | 'v')) {
+                    out.changed |= clipboard_key(self.state, id, k.key, value, false);
                     continue;
                 }
                 let te = self.state.text_edit(id);
@@ -199,19 +245,6 @@ impl Ui<'_> {
                     }
                     _ => {}
                 }
-            }
-            // Typed text.
-            if !self.state.text_input.is_empty() {
-                let typed: String = self.state.text_input.chars().filter(|c| !c.is_control()).collect();
-                if !typed.is_empty() {
-                    let te = self.state.text_edit(id);
-                    let (s0, s1) = te.selection();
-                    value.replace_range(s0..s1, &typed);
-                    te.cursor = s0 + typed.len();
-                    te.anchor = te.cursor;
-                    out.changed = true;
-                }
-                self.state.text_input.clear();
             }
             if out.changed {
                 self.text.advances(value, &style, &mut adv);

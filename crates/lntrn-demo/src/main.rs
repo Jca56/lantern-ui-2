@@ -175,11 +175,10 @@ impl Host for Demo {
             }
             Editor::Notes => {
                 ui.heading("Notes");
-                ui.text_field("notes", &mut self.notes);
-                ui.space(ui.m.gap);
-                ui.paragraph(&self.notes);
-                ui.separator();
-                ui.label_dim(&format!("Area {} · {}", cx.area, if cx.active { "focused" } else { "not focused" }));
+                ui.label_dim(&format!("Area {} · {} · Ctrl+Enter saves", cx.area, if cx.active { "focused" } else { "not focused" }));
+                if ui.text_area("notes", &mut self.notes, None).committed {
+                    cx.request(ShellRequest::PathDialog { action: Action::new("demo.saved"), save: true, suggest: std::env::var_os("HOME").map(std::path::PathBuf::from).unwrap_or_default().join("notes.txt").display().to_string() });
+                }
                 false
             }
             Editor::Empty => {

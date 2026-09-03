@@ -204,6 +204,21 @@ impl TextEngine {
         Self::metrics_of(&key, &mut self.layouts, style)
     }
 
+    /// Source byte range of every row of `text` wrapped at `max_width`,
+    /// top to bottom, into `out`. A hard line break's `\n` lies between
+    /// one row's end and the next row's start; a soft wrap has them equal.
+    /// Empty text is one empty row.
+    pub fn line_ranges(&mut self, text: &str, style: &TextStyle, max_width: f32, out: &mut Vec<(u32, u32)>) {
+        let key = self.layout(text, style, max_width);
+        out.clear();
+        if let Some(l) = self.layouts.get(&key) {
+            out.extend_from_slice(&l.rows);
+        }
+        if out.is_empty() {
+            out.push((0, 0));
+        }
+    }
+
     /// Baseline offset from the top of the line box.
     pub fn ascent(&mut self, style: &TextStyle) -> f32 {
         let (family, mono) = style.resolve_args();
@@ -299,6 +314,32 @@ fn raster_entry(atlas: &mut Atlas, db: &mut FontDb, face_id: usize, gid: u16, si
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn line_ranges_follow_breaks_and_wraps() {
+        let mut e = TextEngine::new("Inter", "JetBrains Mono");
+        let style = TextStyle::new(20.0);
+        let mut rows = Vec::new();
+        e.line_ranges("ab\ncd", &style, 1000.0, &mut rows);
+        assert_eq!(rows, vec![(0, 2), (3, 5)], "the newline sits between the rows");
+        e.line_ranges("ab\n\ncd", &style, 1000.0, &mut rows);
+        assert_eq!(rows, vec![(0, 2), (3, 3), (4, 6)], "an empty line is an empty row");
+        e.line_ranges("", &style, 1000.0, &mut rows);
+        assert_eq!(rows, vec![(0, 0)]);
+        e.line_ranges("ab\r\ncd", &style, 1000.0, &mut rows);
+        assert_eq!(rows, vec![(0, 2), (4, 6)], "CR is skipped, offsets stay right");
+        // A narrow bound wraps between words: the rows meet at the wrap.
+        let text = "one two three";
+        let w = e.measure("one two", &style) + 2.0;
+        e.line_ranges(text, &style, w, &mut rows);
+        assert!(rows.len() >= 2, "{rows:?}");
+        assert_eq!(rows[0].0, 0);
+        assert_eq!(rows.last().unwrap().1, text.len() as u32);
+        for pair in rows.windows(2) {
+            assert_eq!(pair[0].1, pair[1].0, "soft wraps share the boundary: {rows:?}");
+        }
+        assert_eq!(e.measure_wrapped(text, &style, w).lines, rows.len());
+    }
 
     fn engine() -> TextEngine {
         TextEngine::new("Noto Sans", "DejaVu Sans Mono")

@@ -32,6 +32,9 @@ pub struct KeyPress {
     pub key: Key,
     pub mods: Modifiers,
     pub repeat: bool,
+    /// Position in this frame's event stream, shared with
+    /// [`UiState::text_input`], so editors replay keys and text in order.
+    pub seq: u32,
 }
 
 impl KeyPress {
@@ -90,7 +93,9 @@ pub struct UiState {
     // ---- keyboard ----
     pub mods: Modifiers,
     pub keys: Vec<KeyPress>,
-    pub text_input: String,
+    /// Committed text this frame, each piece with its place in the event
+    /// stream (see [`KeyPress::seq`]).
+    pub text_input: Vec<(u32, String)>,
     // ---- widget roles ----
     pub hot: Option<WidgetId>,
     pub active: Option<WidgetId>,
@@ -182,7 +187,7 @@ impl UiState {
             wheel: Vec2::ZERO,
             mods: Modifiers::NONE,
             keys: Vec::new(),
-            text_input: String::new(),
+            text_input: Vec::new(),
             hot: None,
             active: None,
             focus: None,
@@ -237,7 +242,8 @@ impl UiState {
         self.wake_after = None;
         self.now = self.manual_time.unwrap_or_else(|| self.start.elapsed().as_secs_f64());
         let start = self.pointer;
-        for ev in events {
+        for (seq, ev) in events.iter().enumerate() {
+            let seq = seq as u32;
             match ev {
                 Event::PointerMoved(p) => {
                     self.pointer = *p;
@@ -268,9 +274,9 @@ impl UiState {
                 Event::Wheel { delta, .. } => self.wheel += delta.to_pixels(line_px),
                 Event::Modifiers(m) => self.mods = *m,
                 Event::Key { key, pressed: true, repeat, mods } => {
-                    self.keys.push(KeyPress { key: *key, mods: *mods, repeat: *repeat });
+                    self.keys.push(KeyPress { key: *key, mods: *mods, repeat: *repeat, seq });
                 }
-                Event::Text(t) => self.text_input.push_str(t),
+                Event::Text(t) => self.text_input.push((seq, t.clone())),
                 Event::Focus(false) => {
                     self.down = false;
                     self.middle_down = false;
@@ -420,7 +426,7 @@ mod tests {
         assert!(s.pressed && s.down && !s.released);
         assert_eq!(s.press_pos, p);
         assert_eq!(s.wheel, Vec2::new(0.0, 40.0));
-        assert_eq!(s.text_input, "a");
+        assert_eq!(s.text_input, vec![(4, "a".to_owned())]);
         assert!(s.take_key(|k| k.key == Key::Enter).is_some());
         assert!(s.take_key(|k| k.key == Key::Enter).is_none());
         s.active = Some(WidgetId::ROOT);

@@ -20,6 +20,7 @@ pub struct GalleryState {
     pub progress: f64,
     pub color: lntrn_math::Color,
     pub tree_pick: usize,
+    pub notes: String,
 }
 
 impl Default for GalleryState {
@@ -41,6 +42,7 @@ impl Default for GalleryState {
             progress: 0.4,
             color: lntrn_math::Color::hex(0xFFB733),
             tree_pick: 0,
+            notes: "Several lines of text.\nClick to place the caret, drag to select, double-click a word.\nUp and Down remember the column; Enter breaks a line; Ctrl+Enter commits.\n\nWrapping happens at the box edge, so a long line like this one folds onto the next row when the area is narrow enough to need it.".to_owned(),
         }
     }
 }
@@ -151,6 +153,9 @@ fn text(ui: &mut Ui, g: &mut GalleryState) {
     ui.heading("Text field");
     ui.text_field("name", &mut g.text);
     ui.label_dim(&format!("{} bytes, {} chars", g.text.len(), g.text.chars().count()));
+    ui.separator();
+    ui.heading("Text area");
+    ui.text_area("notes", &mut g.notes, Some(ui.m.px(220.0)));
     ui.separator();
     ui.heading("Paragraph");
     ui.paragraph(

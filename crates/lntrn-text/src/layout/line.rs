@@ -33,6 +33,10 @@ pub(crate) struct Layout {
     pub width: f32,
     /// Number of rows after wrapping (at least 1 for non-empty text).
     pub lines: usize,
+    /// Source byte range `[start, end)` of every row, top to bottom. A hard
+    /// break's `\n` sits between one row's end and the next row's start; a
+    /// soft wrap has them equal. Editors map carets to rows with this.
+    pub rows: Vec<(u32, u32)>,
 }
 
 /// Cumulative pen advance at every cluster boundary of a **single** line of
@@ -109,9 +113,12 @@ pub(crate) fn build(
 
     let mut layout = Layout::default();
     let mut line_y = ascent;
+    let mut line_offset = 0usize;
 
-    for src_line in text.split('\n') {
-        let src_line = src_line.strip_suffix('\r').unwrap_or(src_line);
+    for raw_line in text.split('\n') {
+        let src_line = raw_line.strip_suffix('\r').unwrap_or(raw_line);
+        let line_end = line_offset + src_line.len();
+        let first_row = layout.rows.len();
 
         // UAX#9: resolved levels (None = pure LTR fast path), then L4 —
         // mirrored characters swap before shaping so `(` renders as `)`
@@ -236,7 +243,17 @@ pub(crate) fn build(
             layout.width = layout.width.max(pen);
             layout.lines += 1;
             line_y += line_height;
+            let start = row.first().map_or(line_end, |&k| line_offset + glyphs[k].cluster as usize);
+            layout.rows.push((start as u32, line_end as u32));
         }
+        // A row ends where the next row of the same line starts.
+        for i in first_row..layout.rows.len().saturating_sub(1) {
+            layout.rows[i].1 = layout.rows[i + 1].0;
+        }
+        line_offset += raw_line.len() + 1;
+    }
+    if layout.rows.is_empty() {
+        layout.rows.push((0, 0));
     }
     layout
 }
