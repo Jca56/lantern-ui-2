@@ -1,0 +1,18 @@
+[package]
+name = "lntrn-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "The winit harness: window, GPU wiring, event translation, and the rebuild → draw → present cycle for a Lantern UI host."
+
+[lints]
+workspace = true
+
+[dependencies]
+lntrn-core.workspace = true
+lntrn-math.workspace = true
+lntrn-text.workspace = true
+lntrn-render.workspace = true
+lntrn-ui.workspace = true
+winit.workspace = true

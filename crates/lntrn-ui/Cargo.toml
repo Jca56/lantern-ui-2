@@ -1,0 +1,17 @@
+[package]
+name = "lntrn-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Lantern UI: input events, a retained area tree, immediate-mode widgets, props-driven panels, and a shell any app hosts through one trait."
+
+[lints]
+workspace = true
+
+[dependencies]
+lntrn-core.workspace = true
+lntrn-math.workspace = true
+lntrn-props.workspace = true
+lntrn-text.workspace = true
+lntrn-render.workspace = true

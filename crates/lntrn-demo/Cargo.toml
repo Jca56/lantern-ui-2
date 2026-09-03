@@ -1,0 +1,21 @@
+[package]
+name = "lntrn-demo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Widget gallery and reference host: run it to poke at every widget."
+
+[[bin]]
+name = "lntrn-demo"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+lntrn-core.workspace = true
+lntrn-math.workspace = true
+lntrn-props.workspace = true
+lntrn-ui.workspace = true
+lntrn-app.workspace = true
