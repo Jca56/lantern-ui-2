@@ -17,7 +17,7 @@ use lntrn_image::Image;
 use lntrn_props::{Reflect, Value, props};
 use lntrn_ui::gallery::{self, GalleryState, TABS};
 use lntrn_ui::keymap::CTX_WINDOW;
-use lntrn_ui::{Action, AreaCx, AreaId, Axis, ContextMenu, Dialog, DragPayload, Host, HostCx, Icon, Item, Key, KeyConfig, KeyItem, KeyPress, Menu, MenuItem, Modifiers, Shell, ShellRequest, Tool, Trigger, Ui, actions, prefs};
+use lntrn_ui::{Action, AreaCx, AreaId, Axis, ContextMenu, Dialog, DragPayload, Host, HostCx, Icon, Item, Key, KeyConfig, KeyItem, KeyPress, Menu, MenuItem, Modifiers, NewWindow, Shell, ShellRequest, Tool, Trigger, Ui, actions, prefs};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Editor {
@@ -34,9 +34,10 @@ const EDITORS: [Editor; 5] = [Editor::Gallery, Editor::Preferences, Editor::Note
 const PICTURES_TAB: usize = 6;
 
 /// Palette entries: (action id, label).
-const PALETTE: [(&str, &str); 12] = [
+const PALETTE: [(&str, &str); 13] = [
     ("demo.open", "Open File…"),
     ("demo.open_image", "Open Picture…"),
+    ("demo.new_window", "New Window"),
     ("demo.save_as", "Save As…"),
     ("demo.rename_ask", "Rename Notes…"),
     ("demo.reset", "Reset Gallery"),
@@ -70,7 +71,6 @@ struct Demo {
     pending_image: Option<(String, Image)>,
     /// The picture the gallery shows, kept for copying.
     picture: Option<Image>,
-    /// The picture is on its way out of the window.
     dragging_picture: bool,
     /// Snapshots of the gallery before each action that changes it.
     undo: Undo<GalleryState>,
@@ -238,6 +238,7 @@ impl Host for Demo {
                 vec![
                     MenuItem::new("Open…", Action::new("demo.open")),
                     MenuItem::new("Open Picture…", Action::new("demo.open_image")),
+                    MenuItem::new("New Window", Action::new("demo.new_window")).hint("a second gallery, same state"),
                     MenuItem::separator(),
                     MenuItem::new("Save As…", Action::new("demo.save_as")).enabled(!self.notes.is_empty()),
                     MenuItem::new("Rename Notes…", Action::new("demo.rename_ask")),
@@ -310,8 +311,7 @@ impl Host for Demo {
                     ui.state.start_drag_out(DragPayload::Image { image: img.clone(), name: self.gallery.image_name.clone() });
                     self.dragging_picture = true;
                 }
-                let ended = ui.state.drag_ended;
-                if ended.is_some() && std::mem::take(&mut self.dragging_picture) && ended == Some(true) {
+                if ui.state.drag_ended.is_some() && std::mem::take(&mut self.dragging_picture) && ui.state.drag_ended == Some(true) {
                     cx.toast("Dropped the picture");
                 }
                 for p in std::mem::take(&mut self.gallery.dropped) {
@@ -361,6 +361,7 @@ impl Host for Demo {
             }
             "demo.open_image" => cx.request(ShellRequest::PathDialog { action: Action::new("demo.image_opened"), save: false, suggest: home.join("Pictures").join("picture.png").display().to_string() }),
             "demo.image_opened" => self.open_picture(&path(), cx),
+            "demo.new_window" => cx.request(ShellRequest::OpenWindow(NewWindow::single("Lantern UI · Gallery", &self.editor_id(Editor::Gallery)))),
             "demo.save_as" => cx.request(ShellRequest::PathDialog { action: Action::new("demo.saved"), save: true, suggest: home.join("notes.txt").display().to_string() }),
             "demo.saved" => {
                 self.status = match std::fs::write(path(), &self.notes) {

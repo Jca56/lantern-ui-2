@@ -1,25 +1,23 @@
-//! The winit application: window, GPU wiring, event translation, and the
-//! rebuild → draw → present cycle.
+//! The winit application: any number of windows sharing one host and one
+//! GPU, each with a shell of its own, and the rebuild → draw → present
+//! cycle of each (see `win.rs`).
 
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use lntrn_core::{log_error, log_info};
-use lntrn_math::{Rect, Vec2};
 use lntrn_render::wgpu;
 use lntrn_render::{DrawList, Gpu, Images, RenderGraph, TexId};
 use lntrn_text::TextEngine;
 use lntrn_ui::persist;
-use lntrn_ui::{CursorIcon, Event, Host, Modifiers, ResizeEdge, Shell, WindowCommand, WindowState};
+use lntrn_ui::{Host, NewWindow, Shell};
 use winit::application::ApplicationHandler;
-use winit::dpi::{LogicalSize, PhysicalPosition, PhysicalSize};
+use winit::dpi::LogicalSize;
 use winit::event::{StartCause, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::raw_window_handle::{HasDisplayHandle, HasWindowHandle};
-use winit::window::{Window, WindowId};
+use winit::window::{Window, WindowAttributes, WindowId};
 
-use crate::clipboard::Clipboard;
-use crate::frame::{Gfx, draw_frame, rebuild};
+use crate::frame::GpuShared;
+use crate::win::Win;
 
 /// How the window is made.
 #[derive(Clone, Debug)]
@@ -65,6 +63,9 @@ pub struct RenderCx<'f, 'a> {
     pub depth: Option<TexId>,
     /// Window size in physical pixels.
     pub size: [u32; 2],
+    /// Which window is being drawn: 0 is the main one, the rest count up
+    /// as they open (see [`lntrn_ui::ShellRequest::OpenWindow`]).
+    pub window: u32,
 }
 
 /// A [`Host`] that also takes part in the GPU frame. Every hook has a
@@ -117,32 +118,18 @@ pub fn run<H: AppHost>(config: AppConfig, host: H, mut shell: Shell<H>) {
     }
 }
 
-struct Win {
-    window: Arc<Window>,
-    gfx: Gfx,
-    cursor: CursorIcon,
-    /// Where the input method was last told the caret is.
-    ime: Option<Rect>,
-    clipboard: Clipboard,
-}
-
 struct App<H: AppHost> {
     config: AppConfig,
-    win: Option<Win>,
+    /// The GPU, once the first window brought it up.
+    shared: Option<GpuShared>,
+    /// The windows, the main one first.
+    wins: Vec<Win<H>>,
     text: TextEngine,
     draw: DrawList,
-    shell: Shell<H>,
     host: H,
-    /// Events since the last rebuild, in order.
-    events: Vec<Event>,
-    mods: Modifiers,
-    pointer: Vec2,
-    scale: f64,
-    /// Something happened; rebuild before the loop goes back to sleep.
-    dirty: bool,
-    /// An animation asked to be woken at this time.
-    wake: Option<Instant>,
-    focused: bool,
+    /// The main window's shell, until the window exists.
+    shell: Option<Shell<H>>,
+    next_id: u32,
     quit: bool,
 }
 
@@ -151,28 +138,31 @@ impl<H: AppHost> App<H> {
         let t = std::time::Instant::now();
         let text = TextEngine::new(&config.sans, &config.mono);
         log_info!("fonts: {} faces in {:.0} ms", text.face_count(), t.elapsed().as_secs_f64() * 1000.0);
-        Self { config, win: None, text, draw: DrawList::new(), shell, host, events: Vec::new(), mods: Modifiers::NONE, pointer: Vec2::ZERO, scale: 1.0, dirty: true, wake: None, focused: true, quit: false }
+        Self { config, shared: None, wins: Vec::new(), text, draw: DrawList::new(), host, shell: Some(shell), next_id: 0, quit: false }
     }
 
-    /// Write preferences and the layout for next time.
+    /// Write preferences and the main window's layout for next time.
     fn save_state(&self) {
         if !self.config.persist {
             return;
         }
+        let Some(shell) = self.wins.first().map(|w| &w.shell).or(self.shell.as_ref()) else {
+            return;
+        };
         let Some(dir) = persist::config_dir(&self.config.app_id) else {
             return;
         };
-        if let Err(e) = persist::save(&dir.join(PREFS_FILE), &self.shell.prefs) {
+        if let Err(e) = persist::save(&dir.join(PREFS_FILE), &shell.prefs) {
             log_error!("saving preferences: {e}");
         }
-        if let Err(e) = persist::save_text(&dir.join(LAYOUT_FILE), &self.shell.layout_description(&self.host)) {
+        if let Err(e) = persist::save_text(&dir.join(LAYOUT_FILE), &shell.layout_description(&self.host)) {
             log_error!("saving layout: {e}");
         }
     }
 
-    fn init_gfx(&mut self, event_loop: &ActiveEventLoop) {
+    fn attrs(&self, title: &str, size: (f64, f64), maximized: bool) -> WindowAttributes {
         let c = &self.config;
-        let attrs = Window::default_attributes().with_title(&c.title).with_decorations(c.decorations).with_inner_size(LogicalSize::new(c.size.0, c.size.1)).with_maximized(c.maximized);
+        let attrs = Window::default_attributes().with_title(title).with_decorations(c.decorations).with_inner_size(LogicalSize::new(size.0, size.1)).with_maximized(maximized);
         // The app id pairs the window with its desktop entry and icon under
         // Wayland; the X11 class does the same job there.
         #[cfg(target_os = "linux")]
@@ -180,146 +170,108 @@ impl<H: AppHost> App<H> {
             let attrs = winit::platform::wayland::WindowAttributesExtWayland::with_name(attrs, &c.app_id, &c.app_id);
             winit::platform::x11::WindowAttributesExtX11::with_name(attrs, &c.app_id, &c.app_id)
         };
-        let window = Arc::new(event_loop.create_window(attrs).expect("create window"));
-        self.scale = window.scale_factor();
-        let size = window.inner_size();
-
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-        let surface = instance.create_surface(Arc::clone(&window)).expect("create surface");
-        let gpu = match Gpu::with_instance(instance, Some(&surface)) {
-            Ok(g) => g,
-            Err(e) => {
-                log_error!("{e}");
-                event_loop.exit();
-                return;
-            }
-        };
-        let mut gfx = Gfx::new(gpu, surface, size.width, size.height, &self.text);
-        self.host.init_gpu(&gfx.gpu, gfx.surface.format(), &mut gfx.images);
-        log_info!("window: {}x{} @ {:.2}x", size.width, size.height, self.scale);
-        let clipboard = Clipboard::new(window.display_handle().ok().map(|h| h.as_raw()), window.window_handle().ok().map(|h| h.as_raw()));
-        self.win = Some(Win { window, gfx, cursor: CursorIcon::Default, ime: None, clipboard });
+        attrs
     }
 
-    /// Rebuild the UI from the pending events (possibly more than once),
-    /// then draw and present.
-    fn render(&mut self) {
-        let Some(win) = self.win.as_mut() else {
-            return;
-        };
-        let events = std::mem::take(&mut self.events);
-        let ws = WindowState { maximized: win.window.is_maximized(), focused: self.focused };
-        let (out, pending) = rebuild(&mut win.gfx, &mut self.host, &mut self.shell, &mut self.text, &mut self.draw, &events, self.scale, ws, &mut win.clipboard);
-        if pending {
-            // Out of rebuilds with work still pending: finish it next frame.
-            self.dirty = true;
-        }
-        if out.quit {
-            self.quit = true;
-        }
-        self.wake = out.wake_after.map(|s| Instant::now() + Duration::from_secs_f64(s));
-
-        if out.cursor != win.cursor {
-            win.cursor = out.cursor;
-            win.window.set_cursor(cursor_icon(out.cursor));
-        }
-        // Input methods follow the focused text widget's caret.
-        if out.ime != win.ime {
-            if out.ime.is_some() != win.ime.is_some() {
-                win.window.set_ime_allowed(out.ime.is_some());
+    fn open(&mut self, event_loop: &ActiveEventLoop, attrs: WindowAttributes, shell: Shell<H>) {
+        match Win::open(event_loop, attrs, &mut self.shared, &self.text, &mut self.host, shell, self.next_id) {
+            Some(w) => {
+                self.next_id += 1;
+                self.wins.push(w);
             }
-            if let Some(r) = out.ime {
-                win.window.set_ime_cursor_area(PhysicalPosition::new(r.min.x, r.min.y), PhysicalSize::new(r.width(), r.height()));
-            }
-            win.ime = out.ime;
-        }
-        match out.window_command {
-            Some(WindowCommand::Drag) => {
-                let _ = win.window.drag_window();
-            }
-            Some(WindowCommand::Minimize) => win.window.set_minimized(true),
-            Some(WindowCommand::ToggleMaximize) => win.window.set_maximized(!win.window.is_maximized()),
-            Some(WindowCommand::Close) => self.quit = true,
-            Some(WindowCommand::Resize(edge)) => {
-                let _ = win.window.drag_resize_window(resize_direction(edge));
-            }
+            None if self.wins.is_empty() => event_loop.exit(),
             None => {}
         }
+    }
 
-        let window = Arc::clone(&win.window);
-        if !draw_frame(&mut win.gfx, &mut self.host, &mut self.text, &self.draw, out.clear, || window.pre_present_notify()) {
-            win.window.request_redraw();
+    /// A window the host asked for: a shell of its own with the layout it
+    /// named, the main window's preferences, and its own title.
+    fn open_requested(&mut self, event_loop: &ActiveEventLoop, new: NewWindow) {
+        let Some(first) = self.host.editors().first().copied() else {
+            return;
+        };
+        let mut shell = Shell::new(first);
+        if !shell.restore_layout(&self.host, &new.layout) {
+            log_error!("new window: unreadable layout {:?}", new.layout);
         }
+        if let Some(main) = self.wins.first() {
+            shell.prefs = main.shell.prefs.clone();
+        }
+        shell.title = Some(new.title.clone());
+        let attrs = self.attrs(&new.title, new.size.unwrap_or(self.config.size), false);
+        self.open(event_loop, attrs, shell);
     }
-}
 
-fn cursor_icon(c: CursorIcon) -> winit::window::CursorIcon {
-    use winit::window::CursorIcon as W;
-    match c {
-        CursorIcon::Default => W::Default,
-        CursorIcon::Pointer => W::Pointer,
-        CursorIcon::Text => W::Text,
-        CursorIcon::EwResize => W::EwResize,
-        CursorIcon::NsResize => W::NsResize,
-        CursorIcon::NeswResize => W::NeswResize,
-        CursorIcon::NwseResize => W::NwseResize,
-        CursorIcon::Grabbing => W::Grabbing,
-    }
-}
-
-fn resize_direction(e: ResizeEdge) -> winit::window::ResizeDirection {
-    use winit::window::ResizeDirection as R;
-    match e {
-        ResizeEdge::North => R::North,
-        ResizeEdge::South => R::South,
-        ResizeEdge::East => R::East,
-        ResizeEdge::West => R::West,
-        ResizeEdge::NorthEast => R::NorthEast,
-        ResizeEdge::NorthWest => R::NorthWest,
-        ResizeEdge::SouthEast => R::SouthEast,
-        ResizeEdge::SouthWest => R::SouthWest,
+    /// Rebuild, draw and present window `i`, then carry out what its frame
+    /// asked for: preferences it changed reach every window, a close
+    /// closes it (the main window's quits), new windows open.
+    fn render(&mut self, event_loop: &ActiveEventLoop, i: usize) {
+        let Some(shared) = self.shared.as_mut() else {
+            return;
+        };
+        let before = self.wins[i].shell.prefs.clone();
+        let outcome = self.wins[i].render(&mut self.host, shared, &mut self.text, &mut self.draw);
+        if self.wins[i].shell.prefs != before {
+            let prefs = self.wins[i].shell.prefs.clone();
+            for (j, w) in self.wins.iter_mut().enumerate() {
+                if j != i {
+                    w.shell.prefs = prefs.clone();
+                    w.dirty = true;
+                }
+            }
+        }
+        if outcome.quit || (outcome.close && i == 0) {
+            self.quit = true;
+            event_loop.exit();
+            return;
+        }
+        if outcome.close {
+            self.wins.remove(i);
+        }
+        for new in outcome.new_windows {
+            self.open_requested(event_loop, new);
+        }
     }
 }
 
 impl<H: AppHost> ApplicationHandler for App<H> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.win.is_none() {
-            self.init_gfx(event_loop);
-            self.dirty = true;
+        if self.wins.is_empty()
+            && let Some(shell) = self.shell.take()
+        {
+            let attrs = self.attrs(&self.config.title, self.config.size, self.config.maximized);
+            self.open(event_loop, attrs, shell);
         }
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
-        if let Some(ev) = crate::translate::window_event(&event, &mut self.mods, &mut self.pointer) {
-            self.events.push(ev);
-            if let Some(text) = crate::translate::key_text(&event, self.mods) {
-                self.events.push(text);
-            }
-            self.dirty = true;
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+        let Some(i) = self.wins.iter().position(|w| w.window.id() == id) else {
+            return;
+        };
+        if let Some(shared) = &self.shared {
+            self.wins[i].handle(&event, shared);
         }
         match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
-            WindowEvent::Resized(size) => {
-                if let Some(w) = self.win.as_mut() {
-                    w.gfx.resize(size.width, size.height);
-                }
+            WindowEvent::CloseRequested if i == 0 => event_loop.exit(),
+            WindowEvent::CloseRequested => {
+                self.wins.remove(i);
             }
-            WindowEvent::ScaleFactorChanged { scale_factor, .. } => self.scale = scale_factor,
-            WindowEvent::Focused(f) => self.focused = f,
-            WindowEvent::RedrawRequested => {
-                self.render();
-                if self.quit {
-                    event_loop.exit();
-                }
-            }
+            WindowEvent::RedrawRequested => self.render(event_loop, i),
             _ => {}
         }
     }
 
     fn new_events(&mut self, _event_loop: &ActiveEventLoop, cause: StartCause) {
-        // An animation's wake-up: rebuild. The idle heartbeat is not one.
-        if matches!(cause, StartCause::ResumeTimeReached { .. }) && self.wake.take().is_some() {
-            self.dirty = true;
+        // An animation's wake-up: rebuild the windows it was for. The idle
+        // heartbeat is not one.
+        if matches!(cause, StartCause::ResumeTimeReached { .. }) {
+            let now = Instant::now();
+            for w in &mut self.wins {
+                if w.wake.is_some_and(|at| at <= now) {
+                    w.wake = None;
+                    w.dirty = true;
+                }
+            }
         }
     }
 
@@ -328,31 +280,31 @@ impl<H: AppHost> ApplicationHandler for App<H> {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        // The clipboard's own queue: another app pasting what we copied, or
-        // files being dragged in.
-        if let Some(w) = &mut self.win {
-            w.clipboard.poll();
-            let drag = w.clipboard.drag_events(self.scale);
-            if !drag.is_empty() {
-                self.events.extend(drag);
-                self.dirty = true;
+        // The clipboards' own queues: another app pasting what we copied,
+        // or files being dragged in.
+        for w in &mut self.wins {
+            w.poll();
+            if w.dirty {
+                w.dirty = false;
+                w.window.request_redraw();
             }
         }
-        if self.dirty && let Some(w) = &self.win {
-            self.dirty = false;
-            w.window.request_redraw();
+        if self.quit {
+            return;
         }
-        // Sleep until input, or until the running animation's next frame.
-        // With a system clipboard to serve, never plain `Wait`: winit skips
-        // this callback when a wake-up brought it no events of its own, and
-        // another app's paste request is exactly that (it lands on the
-        // clipboard's queue alone). A far deadline keeps every wake-up
-        // reaching the poll above; the deadline itself costs one no-op
-        // wake an hour.
-        let idle = if self.win.as_ref().is_some_and(|w| w.clipboard.available()) { ControlFlow::WaitUntil(Instant::now() + IDLE_HEARTBEAT) } else { ControlFlow::Wait };
-        event_loop.set_control_flow(match self.wake {
+        // Sleep until input, or until the soonest running animation's next
+        // frame. With a system clipboard to serve, never plain `Wait`:
+        // winit skips this callback when a wake-up brought it no events of
+        // its own, and another app's paste request is exactly that (it
+        // lands on the clipboard's queue alone). A far deadline keeps every
+        // wake-up reaching the poll above; the deadline itself costs one
+        // no-op wake an hour.
+        let heartbeat = self.wins.iter().any(|w| w.clipboard.available());
+        let wake = self.wins.iter().filter_map(|w| w.wake).min();
+        event_loop.set_control_flow(match wake {
             Some(at) => ControlFlow::WaitUntil(at),
-            None => idle,
+            None if heartbeat => ControlFlow::WaitUntil(Instant::now() + IDLE_HEARTBEAT),
+            None => ControlFlow::Wait,
         });
     }
 }

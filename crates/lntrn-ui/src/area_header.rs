@@ -19,6 +19,8 @@ pub(crate) enum AreaAction<E> {
     AddTab(AreaId, E),
     CloseTab(AreaId),
     SelectTab(AreaId, usize),
+    /// Open the area's editor in a window of its own.
+    Detach(AreaId),
 }
 
 /// What a header is drawn from.
@@ -88,6 +90,7 @@ pub(crate) fn area_header<H: Host>(ui: &mut Ui, host: &mut H, cx: &mut AreaCx<H:
             out.grip_pressed = true;
         }
         let mut rows = vec![if h.maximized { "Restore" } else { "Maximize" }, "Split Left | Right", "Split Top | Bottom"];
+        rows.push("Open in New Window");
         if h.tabs.len() > 1 {
             rows.push("Close Tab");
         }
@@ -97,6 +100,7 @@ pub(crate) fn area_header<H: Host>(ui: &mut Ui, host: &mut H, cx: &mut AreaCx<H:
                 (0, _) => AreaAction::Maximize(h.area),
                 (1, _) => AreaAction::Split(h.area, Axis::Horizontal),
                 (2, _) => AreaAction::Split(h.area, Axis::Vertical),
+                (_, "Open in New Window") => AreaAction::Detach(h.area),
                 (_, "Close Tab") => AreaAction::CloseTab(h.area),
                 _ => AreaAction::Close(h.area),
             });

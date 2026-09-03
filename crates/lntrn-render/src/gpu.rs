@@ -24,6 +24,7 @@ impl fmt::Display for GpuError {
 
 impl std::error::Error for GpuError {}
 
+#[derive(Clone)]
 pub struct Gpu {
     pub instance: wgpu::Instance,
     pub adapter: wgpu::Adapter,

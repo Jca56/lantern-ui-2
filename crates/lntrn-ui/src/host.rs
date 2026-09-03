@@ -228,7 +228,32 @@ pub enum ShellRequest {
     PrefToggle(String),
     /// Rebuild once more right after this one.
     Rebuild,
+    /// Open another window of this app, with a shell of its own. The
+    /// embedded harness has no windows to give and ignores it.
+    OpenWindow(NewWindow),
+    /// Close the window this request was made in. The main window's close
+    /// quits the app, like its title bar's `×`.
+    CloseWindow,
     Quit,
+}
+
+/// A window to open (see [`ShellRequest::OpenWindow`]).
+#[derive(Clone, Debug, PartialEq)]
+pub struct NewWindow {
+    /// Its title bar, and what the window system shows.
+    pub title: String,
+    /// Its areas, in the saved layout's words: `[Notes]`, or
+    /// `(h 0.5 [Gallery] [Notes])` (see [`crate::Screen::describe`]).
+    pub layout: String,
+    /// Logical size; the main window's when `None`.
+    pub size: Option<(f64, f64)>,
+}
+
+impl NewWindow {
+    /// One area showing the editor whose id is `editor_id`.
+    pub fn single(title: impl Into<String>, editor_id: &str) -> Self {
+        Self { title: title.into(), layout: format!("[{editor_id}]"), size: None }
+    }
 }
 
 /// Who owns the pointer and keyboard this frame.

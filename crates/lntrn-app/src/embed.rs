@@ -20,7 +20,7 @@ use lntrn_ui::{CursorIcon, Event, Shell, WindowState};
 
 use crate::app::AppHost;
 use crate::clipboard::Clipboard;
-use crate::frame::{Gfx, draw_frame, rebuild};
+use crate::frame::{Gfx, GpuShared, draw_frame, rebuild};
 
 /// How an embedded view is made.
 #[derive(Clone, Debug)]
@@ -52,6 +52,7 @@ pub struct EmbedOutput {
 }
 
 pub struct Embedded<H: AppHost> {
+    shared: GpuShared,
     gfx: Gfx,
     text: TextEngine,
     draw: DrawList,
@@ -78,11 +79,13 @@ impl<H: AppHost> Embedded<H> {
         let surface = unsafe { instance.create_surface_unsafe(wgpu::SurfaceTargetUnsafe::RawHandle { raw_display_handle: display, raw_window_handle: window }) }
             .map_err(|e| GpuError::Surface(e.to_string()))?;
         let gpu = Gpu::with_instance(instance, Some(&surface))?;
-        let mut gfx = Gfx::new(gpu, surface, width.max(1), height.max(1), &text);
-        host.init_gpu(&gfx.gpu, gfx.surface.format(), &mut gfx.images);
+        let images = Images::new(&gpu);
+        let mut shared = GpuShared { gpu, images };
+        let gfx = Gfx::new(&shared, surface, width.max(1), height.max(1), &text);
+        host.init_gpu(&shared.gpu, gfx.surface.format(), &mut shared.images);
         log_info!("embedded view: {width}x{height} @ {:.2}x", config.scale);
         let clipboard = Clipboard::new(Some(display), Some(window));
-        Ok(Self { gfx, text, draw: DrawList::new(), shell, host, events: Vec::new(), scale: config.scale, focused: true, wake: None, dirty: true, clipboard })
+        Ok(Self { shared, gfx, text, draw: DrawList::new(), shell, host, events: Vec::new(), scale: config.scale, focused: true, wake: None, dirty: true, clipboard })
     }
 
     /// Queue an input event for the next frame.
@@ -90,7 +93,7 @@ impl<H: AppHost> Embedded<H> {
         match ev {
             Event::Focus(f) => self.focused = f,
             Event::ScaleFactor(s) => self.scale = s,
-            Event::Resized { width, height } => self.gfx.resize(width.max(1), height.max(1)),
+            Event::Resized { width, height } => self.gfx.resize(&self.shared, width.max(1), height.max(1)),
             _ => {}
         }
         self.events.push(ev);
@@ -122,11 +125,11 @@ impl<H: AppHost> Embedded<H> {
         let events = std::mem::take(&mut self.events);
         let ws = WindowState { maximized: true, focused: self.focused };
         self.clipboard.poll();
-        let (out, pending) = rebuild(&mut self.gfx, &mut self.host, &mut self.shell, &mut self.text, &mut self.draw, &events, self.scale, ws, &mut self.clipboard);
+        let (out, pending) = rebuild(&mut self.shared, &self.gfx, &mut self.host, &mut self.shell, &mut self.text, &mut self.draw, &events, self.scale, ws, &mut self.clipboard);
         if pending {
             self.dirty = true;
         }
-        if !draw_frame(&mut self.gfx, &mut self.host, &mut self.text, &self.draw, out.clear, || {}) {
+        if !draw_frame(&self.shared, &mut self.gfx, &mut self.host, &mut self.text, &self.draw, out.clear, 0, || {}) {
             self.dirty = true;
         }
         self.wake = out.wake_after.map(|s| Instant::now() + Duration::from_secs_f64(s));
@@ -152,11 +155,11 @@ impl<H: AppHost> Embedded<H> {
     }
 
     pub fn gpu(&self) -> &Gpu {
-        &self.gfx.gpu
+        &self.shared.gpu
     }
 
     pub fn images(&mut self) -> &mut Images {
-        &mut self.gfx.images
+        &mut self.shared.images
     }
 
     pub fn text(&mut self) -> &mut TextEngine {

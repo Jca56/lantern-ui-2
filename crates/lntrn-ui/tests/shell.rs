@@ -2,7 +2,7 @@
 
 use lntrn_math::Vec2;
 use lntrn_ui::testing::Harness;
-use lntrn_ui::{Action, AreaCx, Axis, Dialog, Host, HostCx, Key, KeyPress, Modifiers, Shell, ShellRequest, Ui, WidgetId, actions};
+use lntrn_ui::{Action, AreaCx, Axis, Dialog, Host, HostCx, Key, KeyPress, Modifiers, NewWindow, Shell, ShellRequest, Ui, WidgetId, WindowCommand, actions};
 
 #[derive(Default)]
 struct Tiny {
@@ -236,10 +236,40 @@ fn tabs_stack_editors_in_one_area() {
     assert_eq!(shell.screen.area(0).unwrap().editor(), 1);
     let menu = h.rect_of(header.with("⋮")).unwrap();
     press_release(&mut h, &mut shell, &mut host, menu.center());
-    let close_tab = h.rect_of(header.with("⋮").with("item").with_index(3)).expect("Close Tab row");
+    let close_tab = h.rect_of(header.with("⋮").with("item").with_index(4)).expect("Close Tab row");
     press_release(&mut h, &mut shell, &mut host, close_tab.center());
     let area = shell.screen.area(0).unwrap();
     assert_eq!(area.tabs.len(), 1);
     assert_eq!(area.editor(), 0, "the other tab remains");
     assert_eq!(shell.layout_description(&host), "[Main]");
+}
+
+#[test]
+fn windows_open_from_the_area_menu_and_close_by_request() {
+    let mut h = Harness::new(1000.0, 700.0);
+    let mut shell: Shell<Tiny> = Shell::new(0);
+    let mut host = Tiny::default();
+    h.shell_frame(&mut shell, &mut host);
+    assert!(shell.take_new_windows().is_empty());
+    // The ⋮ menu's "Open in New Window" row asks for a window showing
+    // this area's editor.
+    let header = WidgetId::ROOT.with_u64(0).with("header");
+    let menu = h.rect_of(header.with("⋮")).unwrap();
+    press_release(&mut h, &mut shell, &mut host, menu.center());
+    let detach = h.rect_of(header.with("⋮").with("item").with_index(3)).expect("Open in New Window row");
+    press_release(&mut h, &mut shell, &mut host, detach.center());
+    let wanted = shell.take_new_windows();
+    assert_eq!(wanted, vec![NewWindow::single(host.editor_label(0), &host.editor_id(0))]);
+    assert_eq!(wanted[0].layout, format!("[{}]", host.editor_id(0)), "a layout the new shell can restore");
+    assert!(shell.take_new_windows().is_empty(), "taken once");
+    assert_eq!(shell.layout_description(&host), "[Main]", "the area stays here too");
+    // A host's request does the same; another asks the window to close,
+    // which the harness sees as the title bar's close.
+    shell.request(&mut host, ShellRequest::OpenWindow(NewWindow { title: "Aside".into(), layout: "[Other]".into(), size: Some((400.0, 300.0)) }));
+    assert_eq!(shell.take_new_windows().len(), 1);
+    assert!(!shell.request(&mut host, ShellRequest::CloseWindow), "closing a window is not quitting");
+    let out = h.shell_frame(&mut shell, &mut host);
+    assert_eq!(out.window_command, Some(WindowCommand::Close));
+    let out = h.shell_frame(&mut shell, &mut host);
+    assert_eq!(out.window_command, None, "asked once");
 }

@@ -14,7 +14,7 @@ use crate::area_header::{AreaAction, HeaderIn, area_header};
 use crate::debug_overlay::FrameStats;
 use crate::event::{Event, MouseButton};
 use crate::file_browser::FileBrowser;
-use crate::host::{AreaCx, Capture, Host, HostCx, ShellRequest};
+use crate::host::{AreaCx, Capture, Host, HostCx, NewWindow, ShellRequest};
 use crate::id::WidgetId;
 use crate::menu::{self, MenuState};
 use crate::popups::{self, Popup, dispatch};
@@ -56,6 +56,14 @@ pub struct Shell<H: Host> {
     pub screen: Screen<H::Editor, H::AreaState>,
     pub state: UiState,
     pub prefs: Prefs,
+    /// Shown in the title bar instead of the host's title: a window that
+    /// is not the main one carries its own name.
+    pub title: Option<String>,
+    /// Windows the host asked for; the harness takes them
+    /// ([`Shell::take_new_windows`]) after the frame.
+    pub(crate) new_windows: Vec<NewWindow>,
+    /// This window asked to close: reported as [`WindowCommand::Close`].
+    pub(crate) close_window: bool,
     pub(crate) popup: Option<Popup>,
     pub(crate) drag_sep: Option<usize>,
     /// An area whose header grip is being dragged, to drop on another.
@@ -68,7 +76,12 @@ impl<H: Host> Shell<H> {
     /// One area hosting `editor`. Split [`Shell::screen`] for a richer
     /// starting layout.
     pub fn new(editor: H::Editor) -> Self {
-        Self { screen: Screen::new(editor), state: UiState::new(), prefs: Prefs::default(), popup: None, drag_sep: None, drag_area: None, toasts: Vec::new(), stats: FrameStats::default() }
+        Self { screen: Screen::new(editor), state: UiState::new(), prefs: Prefs::default(), title: None, new_windows: Vec::new(), close_window: false, popup: None, drag_sep: None, drag_area: None, toasts: Vec::new(), stats: FrameStats::default() }
+    }
+
+    /// The windows asked for since the last call, for the harness to open.
+    pub fn take_new_windows(&mut self) -> Vec<NewWindow> {
+        std::mem::take(&mut self.new_windows)
     }
 
     /// Metrics for the current preferences at `window_scale`.
@@ -159,6 +172,8 @@ impl<H: Host> Shell<H> {
                 }
             }
             ShellRequest::Rebuild => {}
+            ShellRequest::OpenWindow(w) => self.new_windows.push(w),
+            ShellRequest::CloseWindow => self.close_window = true,
             ShellRequest::Quit => return true,
         }
         false
@@ -194,7 +209,7 @@ impl<H: Host> Shell<H> {
         // Resize grabs along the undecorated edges come before everything.
         let mut window_command = self.resize_edges(window, m, ws);
         let edge_cursor = self.state.cursor_icon;
-        let title = host.title();
+        let title = self.title.clone().unwrap_or_else(|| host.title());
         let status = host.status();
         let tb = self.title_bar(draw, text, &theme, m, window, ws, &title, &status, host.title_menus());
         window_command = window_command.or(tb.command);
@@ -425,6 +440,11 @@ impl<H: Host> Shell<H> {
                     self.screen.join(area);
                 }
                 AreaAction::Maximize(area) => self.screen.toggle_maximize(area),
+                AreaAction::Detach(area) => {
+                    if let Some(kind) = self.screen.area(area).map(|a| a.editor()) {
+                        self.new_windows.push(NewWindow::single(host.editor_label(kind), &host.editor_id(kind)));
+                    }
+                }
                 AreaAction::SetEditor(area, kind) => {
                     if let Some(a) = self.screen.area_mut(area) {
                         a.set_editor(kind);
@@ -439,6 +459,7 @@ impl<H: Host> Shell<H> {
 
         self.state.end_frame();
         self.stats = FrameStats { rebuild_ms: started.elapsed().as_secs_f64() * 1000.0, vertices: draw.vertex_count(), frames: self.stats.frames + 1 };
+        let window_command = window_command.or(std::mem::take(&mut self.close_window).then_some(WindowCommand::Close));
         let cursor = if captured {
             CursorIcon::Grabbing
         } else if let Some(c) = drag_cursor {

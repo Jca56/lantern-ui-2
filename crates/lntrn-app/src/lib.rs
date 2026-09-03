@@ -19,6 +19,7 @@ pub mod clipboard;
 pub mod embed;
 mod frame;
 pub mod translate;
+mod win;
 #[cfg(target_os = "linux")]
 pub mod wayland;
 

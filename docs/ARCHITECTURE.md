@@ -173,11 +173,17 @@ of vertices that needs it, so a frame without pictures is still a single
 draw. A 3D host adds its nodes to the render graph between the clear and
 the UI pass; the UI composites over them.
 
-**Two harnesses** share that frame: `lntrn_app::run` owns a winit window
+**Two harnesses** share that frame: `lntrn_app::run` owns winit windows
 (undecorated, the shell draws the frame), and `lntrn_app::Embedded` draws
 into a window somebody else owns — a plugin editor in a DAW — from raw
 window handles, taking events in our own vocabulary and reporting the
-cursor and wake time back.
+cursor and wake time back. An app may have any number of windows (U021):
+each `Win` carries its own surface, clipboard, event queue and `Shell`
+(with a `title` of its own), while the host, the GPU, the pictures and
+the text engine are shared. `ShellRequest::OpenWindow(NewWindow)` opens
+one with a layout in the saved layout's words; the area menu's *Open in
+New Window* does it for one area. Closing the main window quits;
+preferences changed in any window reach the others after the frame.
 
 ## 5. Text
 

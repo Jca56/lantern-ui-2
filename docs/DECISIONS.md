@@ -345,3 +345,28 @@ leave over it, with no second connection and no icon surface to keep.
 our own to draw it on; the pointer alone shows the drag for now).
 Offering only `image/png` for pictures (the file manager, the usual
 drop target, takes files alone).
+
+## U021 — Windows share the host and the GPU; each has its own shell
+**Status:** Accepted (2026-09-03)
+**Decision:** `lntrn_app::run` drives a list of windows. Each `Win` has
+its winit window and surface, a `Pass2d`, a clipboard on that window's
+surface, a `Shell` (layout, popups, toasts, per-widget memory, and a
+`title` of its own) and its own event queue; the `Host`, the `Gpu`, the
+`Images` and the text engine are one per app (`GpuShared`), so a picture
+handle draws in any window and a 3D host tells the windows apart by
+`RenderCx::window`. A window opens through
+`ShellRequest::OpenWindow(NewWindow { title, layout, size })`, the layout
+in the saved layout's words, and the `⋮` menu's *Open in New Window* row
+does it for the area under it (the area stays). `ShellRequest::CloseWindow`
+and the title bar's `×` close a window; the main window's close, and
+`shell.quit`, quit the app. Preferences changed in one window reach the
+others after the frame; the main window's layout and preferences are
+what gets saved.
+**Why:** A mixer beside an arrangement, a render view on the second
+screen: one app state, several views of it, the way Blender does it.
+**Rejected:** One shell with several screens (popups, focus and memory
+are per window by nature); a host per window (the point is shared
+state); restoring secondary windows between runs (later, once an app
+wants it).
+**Learned:** The embedded harness stays single-view and drops
+`OpenWindow` on the floor.

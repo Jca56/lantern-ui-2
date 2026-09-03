@@ -50,7 +50,7 @@ pub mod widgets;
 pub use context_menu::{ContextMenu, Item, Tool};
 pub use debug_overlay::FrameStats;
 pub use event::{Event, Key, Modifiers, MouseButton, WheelDelta};
-pub use host::{Action, AreaCx, Capture, Dialog, Host, HostCx, Menu, MenuItem, ShellRequest, actions};
+pub use host::{Action, AreaCx, Capture, Dialog, Host, HostCx, Menu, MenuItem, NewWindow, ShellRequest, actions};
 pub use icons::Icon;
 pub use id::WidgetId;
 pub use keymap::{KeyConfig, KeyItem, KeyMap, Trigger};

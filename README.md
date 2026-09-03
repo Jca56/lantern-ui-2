@@ -58,9 +58,10 @@ them.
   other apps and text, files and pictures dragged out to them, timed redraws for
   animation (or none, with the reduce-motion preference), a debug overlay
   of what a rebuild costs, preferences and layout saved between runs.
-- **Harnesses**: a winit window (`lntrn_app::run`) and an embedded view
-  for plugin editors (`lntrn_app::Embedded`) that draws into a window the
-  owner supplies.
+- **Harnesses**: winit windows (`lntrn_app::run`; as many as the app
+  opens, each with its own shell, sharing the host and the GPU) and an
+  embedded view for plugin editors (`lntrn_app::Embedded`) that draws
+  into a window the owner supplies.
 - **Testing**: `lntrn_ui::testing::Harness` runs any widget code headless
   with synthetic clicks, drags and keys, so behaviour is tested without a
   window.
