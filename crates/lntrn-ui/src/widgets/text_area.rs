@@ -8,7 +8,7 @@ use crate::event::Key;
 use crate::state::{CursorIcon, Snapshot};
 use crate::ui::{FILL, Sense, Ui};
 use crate::widgets::TextResponse;
-use crate::widgets::text_field::{Edit, byte_at_x, clipboard_key, insert_typed, next_boundary, prev_boundary, take_edits, with_preedit, x_at};
+use crate::widgets::text_field::{Edit, byte_at_x, clipboard_key, insert_typed, next_boundary, pointer_edit, prev_boundary, take_edits, with_preedit, x_at};
 
 /// The row (index into `rows`) a caret at byte `b` is on: the last row that
 /// starts at or before it, so a caret at a soft wrap shows on the next row.
@@ -65,23 +65,13 @@ impl Ui<'_> {
         let mut adv = Vec::new();
         if r.focused {
             // ---- pointer ----
-            if r.pressed || r.dragging {
+            if r.pressed || r.dragging || r.released {
                 let p = self.state.pointer;
                 let row = (((p.y - inner.min.y + scroll) / lh).floor().max(0.0) as usize).min(rows.len() - 1);
                 let (s, e) = (rows[row].0 as usize, rows[row].1 as usize);
                 self.text.advances(&value[s..e], &style, &mut adv);
                 let b = s + byte_at_x(&adv, p.x - inner.min.x);
-                let shift = self.state.mods.shift();
-                let te = self.state.text_edit(id);
-                te.cursor = b;
-                if r.pressed && !shift {
-                    te.anchor = b;
-                }
-                if r.double_clicked {
-                    let (ws, we) = word_at(value, b);
-                    te.anchor = ws;
-                    te.cursor = we;
-                }
+                pointer_edit(self, id, &r, value, b, |b| word_at(value, b));
                 *self.state.floats(id, [-1.0; 4]) = [-1.0; 4];
             }
             // ---- keys and typed text, in arrival order ----

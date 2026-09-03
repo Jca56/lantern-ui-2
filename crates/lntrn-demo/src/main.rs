@@ -17,7 +17,7 @@ use lntrn_image::Image;
 use lntrn_props::{Reflect, Value, props};
 use lntrn_ui::gallery::{self, GalleryState, TABS};
 use lntrn_ui::keymap::CTX_WINDOW;
-use lntrn_ui::{Action, AreaCx, AreaId, Axis, ContextMenu, Dialog, Host, HostCx, Icon, Item, Key, KeyConfig, KeyItem, KeyPress, Menu, MenuItem, Modifiers, Shell, ShellRequest, Tool, Trigger, Ui, actions, prefs};
+use lntrn_ui::{Action, AreaCx, AreaId, Axis, ContextMenu, Dialog, DragPayload, Host, HostCx, Icon, Item, Key, KeyConfig, KeyItem, KeyPress, Menu, MenuItem, Modifiers, Shell, ShellRequest, Tool, Trigger, Ui, actions, prefs};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Editor {
@@ -70,6 +70,8 @@ struct Demo {
     pending_image: Option<(String, Image)>,
     /// The picture the gallery shows, kept for copying.
     picture: Option<Image>,
+    /// The picture is on its way out of the window.
+    dragging_picture: bool,
     /// Snapshots of the gallery before each action that changes it.
     undo: Undo<GalleryState>,
 }
@@ -121,6 +123,7 @@ impl Demo {
             gallery: GalleryState::default(),
             pending_image: None,
             picture: None,
+            dragging_picture: false,
             undo: Undo::default(),
             keys,
             notes_name: "Notes".to_owned(),
@@ -302,6 +305,15 @@ impl Host for Demo {
                     }
                 }
                 gallery::draw(ui, &mut self.gallery);
+                // The picture dragged off its tab leaves as a PNG.
+                if std::mem::take(&mut self.gallery.drag_picture) && let Some(img) = &self.picture {
+                    ui.state.start_drag_out(DragPayload::Image { image: img.clone(), name: self.gallery.image_name.clone() });
+                    self.dragging_picture = true;
+                }
+                let ended = ui.state.drag_ended;
+                if ended.is_some() && std::mem::take(&mut self.dragging_picture) && ended == Some(true) {
+                    cx.toast("Dropped the picture");
+                }
                 for p in std::mem::take(&mut self.gallery.dropped) {
                     self.open_dropped(&p, &mut cx.host());
                 }

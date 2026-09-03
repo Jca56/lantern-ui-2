@@ -55,7 +55,7 @@ them.
   widgets inside when it wants them), toasts, context menus with
   tool strips, keyboard focus with rings and scroll-into-view, the system
   clipboard (text and pictures), input methods, files dragged in from
-  other apps, timed redraws for
+  other apps and text, files and pictures dragged out to them, timed redraws for
   animation (or none, with the reduce-motion preference), a debug overlay
   of what a rebuild costs, preferences and layout saved between runs.
 - **Harnesses**: a winit window (`lntrn_app::run`) and an embedded view

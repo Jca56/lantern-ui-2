@@ -176,12 +176,16 @@ pub enum Event {
     FileHoverLeft,
     /// A file was dropped on the window (one event per file).
     FileDropped(PathBuf),
+    /// A drag this window started ([`crate::UiState::start_drag_out`])
+    /// is over: dropped on another window, or let go nowhere. The window
+    /// system keeps the button release, so this stands in for it.
+    DragEnded { dropped: bool },
 }
 
 impl Event {
     /// Does this event mean "something may look different now"?
     pub fn wants_redraw(&self) -> bool {
-        matches!(self, Event::Resized { .. } | Event::ScaleFactor(_) | Event::Focus(_) | Event::ImePreedit { .. } | Event::FileHovered(_) | Event::FileHoverLeft | Event::FileDropped(_))
+        matches!(self, Event::Resized { .. } | Event::ScaleFactor(_) | Event::Focus(_) | Event::ImePreedit { .. } | Event::FileHovered(_) | Event::FileHoverLeft | Event::FileDropped(_) | Event::DragEnded { .. })
     }
 
     /// A key press that means "paste" (Ctrl+V, Shift+Insert): the harness

@@ -15,7 +15,7 @@ use winit::application::ApplicationHandler;
 use winit::dpi::{LogicalSize, PhysicalPosition, PhysicalSize};
 use winit::event::{StartCause, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::raw_window_handle::HasDisplayHandle;
+use winit::raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use winit::window::{Window, WindowId};
 
 use crate::clipboard::Clipboard;
@@ -197,7 +197,7 @@ impl<H: AppHost> App<H> {
         let mut gfx = Gfx::new(gpu, surface, size.width, size.height, &self.text);
         self.host.init_gpu(&gfx.gpu, gfx.surface.format(), &mut gfx.images);
         log_info!("window: {}x{} @ {:.2}x", size.width, size.height, self.scale);
-        let clipboard = Clipboard::new(window.display_handle().ok().map(|h| h.as_raw()));
+        let clipboard = Clipboard::new(window.display_handle().ok().map(|h| h.as_raw()), window.window_handle().ok().map(|h| h.as_raw()));
         self.win = Some(Win { window, gfx, cursor: CursorIcon::Default, ime: None, clipboard });
     }
 

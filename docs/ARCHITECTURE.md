@@ -135,7 +135,13 @@ rebuild that carries a paste key and pushes ours out after a copy
 (`lntrn_app::clipboard`, over the window's own Wayland connection with a
 `wl_data_device` of ours, U018; in-app elsewhere), and serves other apps'
 pastes from a private queue even while the window sits idle. Pictures
-travel the same way as PNG (`UiState::clipboard_image`). *Input methods*: a
+travel the same way as PNG (`UiState::clipboard_image`). *Drags* cross it
+both ways: files dragged in arrive as `Event::FileHovered`/`FileDropped`
+for a `Ui::drop_zone` or the host; a widget whose drag has gone a few
+pixels (`Ui::drag_out_starts`) hands a `DragPayload` (text, files, a
+picture) to `UiState::start_drag_out`, the harness starts the window
+system's drag from the press's own serial, and `Event::DragEnded` stands
+in for the button release the compositor keeps (U020). *Input methods*: a
 composition arrives as `Event::ImePreedit`, the
 focused text widget shows it inline at its caret with an underline and
 reports the caret rect (`ShellOutput::ime`) so the harness can place the

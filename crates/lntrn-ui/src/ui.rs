@@ -388,6 +388,16 @@ impl<'a> Ui<'a> {
         r
     }
 
+    /// A drag on `r` has just gone far enough to leave the window: the
+    /// pointer moved a few pixels from the press with the button held, and
+    /// no drag out is under way. Follow it with
+    /// [`UiState::start_drag_out`]; from the next frame on the window
+    /// system has the pointer and `r` sees nothing until
+    /// [`crate::Event::DragEnded`].
+    pub fn drag_out_starts(&self, r: &Response) -> bool {
+        r.dragging && !r.pressed && !self.state.dragging_out && self.state.pointer.distance(self.state.press_pos) >= self.m.px(6.0)
+    }
+
     /// Let `rect` receive files dragged in from outside the window. The
     /// first zone under the pointer takes a drop; whatever no zone takes
     /// reaches [`crate::Host::dropped`]. The pointer is only as current

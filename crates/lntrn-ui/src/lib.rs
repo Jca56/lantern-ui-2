@@ -57,7 +57,7 @@ pub use keymap::{KeyConfig, KeyItem, KeyMap, Trigger};
 pub use prefs::Prefs;
 pub use screen::{Area, AreaId, Axis, Screen};
 pub use shell::{Shell, ShellOutput, WindowState};
-pub use state::{CursorIcon, History, KeyPress, Snapshot, UiState};
+pub use state::{CursorIcon, DragPayload, History, KeyPress, Snapshot, UiState};
 pub use theme::{Metrics, Theme};
 pub use titlebar::{ResizeEdge, WindowCommand};
 pub use toasts::Toast;

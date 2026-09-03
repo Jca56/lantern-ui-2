@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use lntrn_math::{Rect, Vec2};
 
+use crate::state::DragPayload;
 use crate::ui::{FILL, Ui};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -177,6 +178,10 @@ pub fn draw(ui: &mut Ui, fb: &mut FileBrowser, rect: Rect) -> Verdict {
             ui.push_index(i);
             let label = if e.is_dir { format!("▸  {}/", e.name) } else { format!("    {}", e.name) };
             let r = ui.selectable(&label, !e.is_dir && e.name == fb.name);
+            // A row dragged out of the window is the file itself.
+            if ui.drag_out_starts(&r) {
+                ui.state.start_drag_out(DragPayload::Files(vec![fb.dir.join(&e.name)]));
+            }
             if e.is_dir {
                 if r.clicked {
                     enter = Some(e.name.clone());

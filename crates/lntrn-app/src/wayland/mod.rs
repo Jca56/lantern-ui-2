@@ -7,6 +7,7 @@
 mod data_device;
 mod dnd;
 mod ffi;
+mod listeners;
 
-pub use data_device::Clipboard;
-pub use dnd::{DragEvent, parse_uri_list};
+pub use data_device::{Clipboard, DragData};
+pub use dnd::{DragEvent, encode_uri_list, parse_uri_list};

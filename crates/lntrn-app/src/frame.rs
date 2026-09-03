@@ -94,6 +94,15 @@ pub(crate) fn rebuild<H: AppHost>(gfx: &mut Gfx, host: &mut H, shell: &mut Shell
     {
         log_trace!("clipboard: no system clipboard, picture kept in-app");
     }
+    // A widget dragged something out: the window system takes the pointer
+    // from here until the drag ends.
+    if let Some(payload) = shell.state.take_drag_out() {
+        if clipboard.start_drag(payload) {
+            shell.state.dragging_out = true;
+        } else {
+            log_trace!("drag: no window system drag to be had; nothing left the window");
+        }
+    }
     (ShellOutput { quit, window_command: command, ..out }, again)
 }
 

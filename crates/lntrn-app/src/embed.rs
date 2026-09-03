@@ -81,7 +81,7 @@ impl<H: AppHost> Embedded<H> {
         let mut gfx = Gfx::new(gpu, surface, width.max(1), height.max(1), &text);
         host.init_gpu(&gfx.gpu, gfx.surface.format(), &mut gfx.images);
         log_info!("embedded view: {width}x{height} @ {:.2}x", config.scale);
-        let clipboard = Clipboard::new(Some(display));
+        let clipboard = Clipboard::new(Some(display), Some(window));
         Ok(Self { gfx, text, draw: DrawList::new(), shell, host, events: Vec::new(), scale: config.scale, focused: true, wake: None, dirty: true, clipboard })
     }
 

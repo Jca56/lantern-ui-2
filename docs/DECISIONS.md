@@ -320,3 +320,28 @@ selection survives switching tabs.
 stays the layout, and a tab is just another editor in the same place.
 **Rejected:** Tabs as a widget the host draws itself in every editor
 (every app would rebuild the same strip and lose it in the saved layout).
+
+## U020 — Drags out of the window ride the clipboard's data device
+**Status:** Accepted (2026-09-03)
+**Decision:** A widget that senses a drag asks `Ui::drag_out_starts`
+(the pointer moved a few pixels from the press, no drag out under way)
+and hands a `DragPayload` (text, files, or a picture with a name) to
+`UiState::start_drag_out`. After the frame the harness calls
+`wl_data_device.start_drag` with a `wl_data_source` of ours, from the
+window's `wl_surface`, with the serial of the button press. That serial
+comes from a `wl_pointer` of our own beside the clipboard's keyboard,
+since winit keeps its serials to itself. Text goes as the clipboard's
+text types, files as `text/uri-list`, a picture as `image/png` and, for
+the apps that take files rather than pictures, as a PNG file written
+under `$XDG_RUNTIME_DIR/lntrn-<pid>/` for as long as the window lives.
+The compositor keeps the button release once it has grabbed the pointer,
+so the source's `dnd_finished` or `cancelled` becomes `Event::DragEnded`,
+which puts the button up without a click. Text fields and areas drag
+their selection (a press on it waits; a release collapses it), the file
+browser drags its rows, the gallery's picture drags off its tab.
+**Why:** The other half of U014: what came in over the data device can
+leave over it, with no second connection and no icon surface to keep.
+**Rejected:** A drag icon surface (a `wl_shm` buffer and a surface of
+our own to draw it on; the pointer alone shows the drag for now).
+Offering only `image/png` for pictures (the file manager, the usual
+drop target, takes files alone).

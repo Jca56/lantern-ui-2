@@ -29,6 +29,9 @@ pub struct TextEdit {
     pub scroll: f64,
     /// While editing a number field: the text being typed.
     pub buffer: Option<String>,
+    /// A press landed on the selection: a drag from here takes the text
+    /// out of the window; a release collapses the selection to a caret.
+    pub drag_pending: bool,
 }
 
 impl TextEdit {

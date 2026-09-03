@@ -7,8 +7,8 @@ use lntrn_math::{Rect, Vec2};
 
 use crate::event::Key;
 use crate::id::WidgetId;
-use crate::state::CursorIcon;
-use crate::ui::{FILL, Sense, Ui};
+use crate::state::{CursorIcon, DragPayload};
+use crate::ui::{FILL, Response, Sense, Ui};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct TextResponse {
@@ -89,6 +89,43 @@ pub(crate) fn take_edits(state: &mut crate::state::UiState) -> Vec<Edit> {
     }
     out.sort_by_key(|(seq, _)| *seq);
     out.into_iter().map(|(_, e)| e).collect()
+}
+
+/// The pointer on a text widget, at byte `b` of `value`: place the caret
+/// or extend the selection. A press on the selection waits instead: a
+/// drag from it takes the text out of the window, a release collapses it
+/// to a caret. `word` is what a double click at `b` selects.
+pub(super) fn pointer_edit(ui: &mut Ui, id: WidgetId, r: &Response, value: &str, b: usize, word: impl Fn(usize) -> (usize, usize)) {
+    let shift = ui.state.mods.shift();
+    if r.pressed {
+        let te = ui.state.text_edit(id);
+        let (s0, s1) = te.selection();
+        te.drag_pending = !shift && !r.double_clicked && s0 < b && b < s1;
+    }
+    if ui.state.text_edit(id).drag_pending {
+        if r.released {
+            let te = ui.state.text_edit(id);
+            te.drag_pending = false;
+            te.cursor = b;
+            te.anchor = b;
+        } else if ui.drag_out_starts(r) {
+            let te = ui.state.text_edit(id);
+            te.drag_pending = false;
+            let (s0, s1) = te.selection();
+            ui.state.start_drag_out(DragPayload::Text(value[s0..s1].to_owned()));
+        }
+    } else if !r.released {
+        let te = ui.state.text_edit(id);
+        te.cursor = b;
+        if r.pressed && !shift {
+            te.anchor = b;
+        }
+        if r.double_clicked {
+            let (ws, we) = word(b);
+            te.anchor = ws;
+            te.cursor = we;
+        }
+    }
 }
 
 /// Insert typed text at the selection. Returns `true` if anything went in.
@@ -217,22 +254,9 @@ impl Ui<'_> {
         let mut scroll = self.state.text_edit(id).scroll;
 
         if r.focused {
-            // Pointer: place caret / extend selection.
-            if r.pressed {
+            if r.pressed || r.dragging || r.released {
                 let b = byte_at_x(&adv, self.state.pointer.x - inner.min.x + scroll);
-                let shift = self.state.mods.shift();
-                let te = self.state.text_edit(id);
-                te.cursor = b;
-                if !shift {
-                    te.anchor = b;
-                }
-                if r.double_clicked {
-                    te.anchor = 0;
-                    te.cursor = value.len();
-                }
-            } else if r.dragging {
-                let b = byte_at_x(&adv, self.state.pointer.x - inner.min.x + scroll);
-                self.state.text_edit(id).cursor = b;
+                pointer_edit(self, id, &r, value, b, |_| (0, value.len()));
             }
             // Keyboard and typed text, in the order they arrived.
             for edit in take_edits(self.state) {

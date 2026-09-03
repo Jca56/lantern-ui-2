@@ -154,7 +154,8 @@ impl Ui<'_> {
     pub fn selectable(&mut self, label: &str, selected: bool) -> Response {
         let id = self.id(label);
         let rect = self.alloc(Vec2::new(FILL, self.m.widget_h));
-        let mut r = self.interact(id, rect, Sense::CLICK);
+        // Drag is sensed so a row can be dragged out of the window.
+        let mut r = self.interact(id, rect, Sense::DRAG);
         self.focusable(id, rect);
         self.key_click(id, &mut r);
         if r.hovered {

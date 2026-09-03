@@ -3,7 +3,8 @@
 use lntrn_math::{Rect, Vec2};
 
 use super::{GalleryState, KINDS};
-use crate::ui::{FILL, Ui};
+use crate::state::CursorIcon;
+use crate::ui::{FILL, Sense, Ui};
 use crate::widgets::{Column, RowStep};
 
 pub(super) fn audio(ui: &mut Ui, g: &mut GalleryState) {
@@ -142,9 +143,18 @@ pub(super) fn pictures(ui: &mut Ui, g: &mut GalleryState) {
         ui.heading(if zone.hovering { "Drop it here" } else { "Pictures" });
         match g.image {
             Some(img) => {
-                ui.label_dim(&format!("{} · {}×{} · Ctrl+C copies it, Ctrl+V pastes one", g.image_name, img.width, img.height));
+                ui.label_dim(&format!("{} · {}×{} · Ctrl+C copies it, Ctrl+V pastes one, drag it out to a folder", g.image_name, img.width, img.height));
                 ui.label("Fit inside a box, aspect kept, corners rounded:");
-                ui.image_fit(img, Vec2::new(FILL, 320.0));
+                let rect = ui.image_fit(img, Vec2::new(FILL, 320.0));
+                // Dragged off the tab, the picture leaves the window; the
+                // host has the pixels and starts the drag.
+                let r = ui.interact(ui.id("picture"), rect, Sense::DRAG);
+                if r.held {
+                    ui.state.cursor_icon = CursorIcon::Grabbing;
+                }
+                if ui.drag_out_starts(&r) {
+                    g.drag_picture = true;
+                }
                 ui.label("At its own size, or as wide as the panel:");
                 ui.row(|ui| {
                     ui.image(img, Vec2::new(120.0, 120.0 / img.aspect()));

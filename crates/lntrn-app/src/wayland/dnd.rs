@@ -16,7 +16,7 @@ use std::time::Duration;
 
 use super::ffi::{self, Interface, Lib, Proxy, dnd_action, op};
 
-const URI_LIST: &CStr = c"text/uri-list";
+pub(super) const URI_LIST: &CStr = c"text/uri-list";
 /// How long a drop waits for the rest of a list still being read.
 const DROP_TIMEOUT: Duration = Duration::from_millis(1000);
 
@@ -29,6 +29,9 @@ pub enum DragEvent {
     Hovered(Vec<PathBuf>),
     Left,
     Dropped(Vec<PathBuf>),
+    /// A drag of ours ([`super::Clipboard::start_drag`]) is over: taken
+    /// by a drop somewhere, or let go nowhere.
+    Ended { dropped: bool },
 }
 
 /// A drag over the window that offers files.
@@ -182,6 +185,25 @@ pub fn parse_uri_list(bytes: &[u8]) -> Vec<PathBuf> {
         .collect()
 }
 
+/// `paths` as a `text/uri-list`: one `file://` line each, the bytes that
+/// are not plain path characters percent-escaped.
+pub fn encode_uri_list(paths: &[PathBuf]) -> Vec<u8> {
+    use std::os::unix::ffi::OsStrExt;
+    let mut out = Vec::new();
+    for path in paths {
+        out.extend_from_slice(b"file://");
+        for &b in path.as_os_str().as_bytes() {
+            if b.is_ascii_alphanumeric() || b"-._~/".contains(&b) {
+                out.push(b);
+            } else {
+                out.extend_from_slice(format!("%{b:02X}").as_bytes());
+            }
+        }
+        out.extend_from_slice(b"\r\n");
+    }
+    out
+}
+
 fn percent_decode(s: &str) -> String {
     let bytes = s.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
@@ -213,5 +235,13 @@ mod tests {
         assert!(parse_uri_list(b"").is_empty());
         assert_eq!(percent_decode("100%"), "100%", "a stray percent stays");
         assert_eq!(percent_decode("%2"), "%2");
+    }
+
+    #[test]
+    fn uri_lists_round_trip() {
+        let paths = vec![PathBuf::from("/home/alva/Pictures/a b.png"), PathBuf::from("/tmp/café#1.txt")];
+        let list = encode_uri_list(&paths);
+        assert_eq!(String::from_utf8_lossy(&list), "file:///home/alva/Pictures/a%20b.png\r\nfile:///tmp/caf%C3%A9%231.txt\r\n");
+        assert_eq!(parse_uri_list(&list), paths);
     }
 }

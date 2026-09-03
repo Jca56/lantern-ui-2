@@ -73,6 +73,9 @@ pub struct GalleryState {
     pub image_name: String,
     /// Files dropped on the Pictures tab, for the host to open.
     pub dropped: Vec<PathBuf>,
+    /// The picture was dragged off its tab: the host, which has the
+    /// pixels, starts the drag out of the window.
+    pub drag_picture: bool,
     pub rows: Vec<TableRow>,
     pub picked_row: Option<usize>,
     /// The pick in the ten-thousand-row list.
@@ -119,6 +122,7 @@ impl Default for GalleryState {
             image: None,
             image_name: String::new(),
             dropped: Vec::new(),
+            drag_picture: false,
             rows: sample_rows(),
             picked_row: None,
             big_pick: None,

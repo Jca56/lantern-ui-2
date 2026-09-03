@@ -31,6 +31,17 @@ pub enum CursorIcon {
     Grabbing,
 }
 
+/// What a drag out of the window carries (see [`UiState::start_drag_out`]).
+/// The harness offers it to whatever window the pointer lets go over:
+/// text as text, files as a file list, a picture as PNG and as a file.
+#[derive(Clone, Debug, PartialEq)]
+pub enum DragPayload {
+    Text(String),
+    Files(Vec<PathBuf>),
+    /// `name` names the file other apps see (`.png` is added if missing).
+    Image { image: Image, name: String },
+}
+
 /// A key press delivered to the focused widget this frame.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct KeyPress {
@@ -120,6 +131,16 @@ pub struct UiState {
     /// may take them ([`crate::Ui::drop_zone`]); whatever is left goes to
     /// [`crate::Host::dropped`].
     pub dropped_files: Vec<PathBuf>,
+    /// A drag out of the window asked for this frame; the harness takes
+    /// it ([`Self::take_drag_out`]) and starts it.
+    drag_out: Option<DragPayload>,
+    /// A drag out of the window is under way: the window system has the
+    /// pointer until it ends ([`Event::DragEnded`]).
+    pub dragging_out: bool,
+    /// The drag out ended this frame: `Some(true)` dropped somewhere,
+    /// `Some(false)` let go nowhere. A widget moving what it dragged
+    /// (rather than copying) finishes the move on `Some(true)`.
+    pub drag_ended: Option<bool>,
     /// An input method's composition in progress: the text and the
     /// composition caret (byte range into it). Text widgets show it inline
     /// at their caret; [`Event::Text`] commits it.
@@ -196,6 +217,9 @@ impl UiState {
             clipboard_image_wanted: false,
             hovering_files: false,
             dropped_files: Vec::new(),
+            drag_out: None,
+            dragging_out: false,
+            drag_ended: None,
             ime_preedit: None,
             ime_rect: None,
             reduce_motion: false,
@@ -252,6 +276,19 @@ impl UiState {
         std::mem::take(&mut self.dropped_files)
     }
 
+    /// Start dragging `payload` out of the window: the pointer is down and
+    /// moving (see [`crate::Ui::drag_out_starts`]), and the harness hands
+    /// it to the window system after this frame. From then on the drag is
+    /// the window system's until [`Event::DragEnded`] arrives.
+    pub fn start_drag_out(&mut self, payload: DragPayload) {
+        self.drag_out = Some(payload);
+    }
+
+    /// The drag out asked for this frame, for the harness to start.
+    pub fn take_drag_out(&mut self) -> Option<DragPayload> {
+        self.drag_out.take()
+    }
+
     /// Fold this frame's events into the state. `line_px` converts wheel
     /// notches to pixels.
     pub fn begin_frame(&mut self, events: &[Event], line_px: f64) {
@@ -274,6 +311,7 @@ impl UiState {
         self.focus_moved = std::mem::take(&mut self.focus_moved_pending);
         self.wake_after = None;
         self.dropped_files.clear();
+        self.drag_ended = None;
         self.ime_rect = None;
         self.now = self.manual_time.unwrap_or_else(|| self.start.elapsed().as_secs_f64());
         let start = self.pointer;
@@ -297,6 +335,9 @@ impl UiState {
                 Event::Button { button: MouseButton::Left, pressed: false, .. } => {
                     self.down = false;
                     self.released = true;
+                    // A release that reached us means no drag out took the
+                    // pointer after all.
+                    self.dragging_out = false;
                 }
                 Event::Button { button: MouseButton::Right, pressed: true, .. } => self.right_pressed = true,
                 Event::Button { button: MouseButton::Middle, pressed, pos, .. } => {
@@ -324,6 +365,13 @@ impl UiState {
                 Event::FileDropped(p) => {
                     self.hovering_files = false;
                     self.dropped_files.push(p.clone());
+                }
+                Event::DragEnded { dropped } => {
+                    // The button is up, but nothing was clicked.
+                    self.down = false;
+                    self.active = None;
+                    self.dragging_out = false;
+                    self.drag_ended = Some(*dropped);
                 }
                 Event::Focus(false) => {
                     self.down = false;

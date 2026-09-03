@@ -169,8 +169,9 @@ static REGISTRY_METHODS: [Message; 1] = [message(c"bind", c"usun", &T4)];
 static REGISTRY_EVENTS: [Message; 2] = [message(c"global", c"usu", &T3), message(c"global_remove", c"u", &T1)];
 pub static WL_REGISTRY: Interface = interface(c"wl_registry", &REGISTRY_METHODS, &REGISTRY_EVENTS);
 
+static SEAT_POINTER_T: Types<1> = Types([&WL_POINTER as *const Interface]);
 static SEAT_KEYBOARD_T: Types<1> = Types([&WL_KEYBOARD as *const Interface]);
-static SEAT_METHODS: [Message; 3] = [message(c"get_pointer", c"n", &T1), message(c"get_keyboard", c"n", &SEAT_KEYBOARD_T), message(c"get_touch", c"n", &T1)];
+static SEAT_METHODS: [Message; 3] = [message(c"get_pointer", c"n", &SEAT_POINTER_T), message(c"get_keyboard", c"n", &SEAT_KEYBOARD_T), message(c"get_touch", c"n", &T1)];
 static SEAT_EVENTS: [Message; 2] = [message(c"capabilities", c"u", &T1), message(c"name", c"s", &T1)];
 pub static WL_SEAT: Interface = interface(c"wl_seat", &SEAT_METHODS, &SEAT_EVENTS);
 
@@ -184,6 +185,12 @@ static KEYBOARD_EVENTS: [Message; 6] = [
     message(c"repeat_info", c"ii", &T2),
 ];
 pub static WL_KEYBOARD: Interface = interface(c"wl_keyboard", &KEYBOARD_METHODS, &KEYBOARD_EVENTS);
+
+// Version 1 of the pointer: the seat is bound at 1, so nothing past
+// `axis` is ever sent.
+static POINTER_METHODS: [Message; 2] = [message(c"set_cursor", c"u?oii", &T4), message(c"release", c"", &T0)];
+static POINTER_EVENTS: [Message; 5] = [message(c"enter", c"uoff", &T4), message(c"leave", c"uo", &T2), message(c"motion", c"uff", &T3), message(c"button", c"uuuu", &T4), message(c"axis", c"uuf", &T3)];
+pub static WL_POINTER: Interface = interface(c"wl_pointer", &POINTER_METHODS, &POINTER_EVENTS);
 
 static DDM_SOURCE_T: Types<1> = Types([&WL_DATA_SOURCE as *const Interface]);
 static DDM_DEVICE_T: Types<2> = Types([&WL_DATA_DEVICE as *const Interface, &WL_SEAT as *const Interface]);
@@ -224,12 +231,15 @@ pub static WL_DATA_OFFER: Interface = interface(c"wl_data_offer", &OFFER_METHODS
 pub mod op {
     pub const DISPLAY_GET_REGISTRY: u32 = 1;
     pub const REGISTRY_BIND: u32 = 0;
+    pub const SEAT_GET_POINTER: u32 = 0;
     pub const SEAT_GET_KEYBOARD: u32 = 1;
     pub const DDM_CREATE_DATA_SOURCE: u32 = 0;
     pub const DDM_GET_DATA_DEVICE: u32 = 1;
+    pub const DEVICE_START_DRAG: u32 = 0;
     pub const DEVICE_SET_SELECTION: u32 = 1;
     pub const SOURCE_OFFER: u32 = 0;
     pub const SOURCE_DESTROY: u32 = 1;
+    pub const SOURCE_SET_ACTIONS: u32 = 2;
     pub const OFFER_ACCEPT: u32 = 0;
     pub const OFFER_RECEIVE: u32 = 1;
     pub const OFFER_DESTROY: u32 = 2;
@@ -255,6 +265,7 @@ mod tests {
         assert_eq!(arg_count(c"3u"), 1);
         assert_eq!(WL_DATA_DEVICE.event_count, 6);
         assert_eq!(WL_DATA_DEVICE.version, 1);
+        assert_eq!(WL_POINTER.event_count, 5, "a version 1 pointer");
         // The tables link up: a data offer event creates a wl_data_offer.
         let offer_types = unsafe { *DEVICE_EVENTS[0].types };
         assert!(std::ptr::eq(offer_types, &WL_DATA_OFFER));
