@@ -6,7 +6,7 @@
 //! ```ignore
 //! let mut view = unsafe { Embedded::new(config, host, shell, display, window, w, h) }?;
 //! // on each host event:  view.push(Event::PointerMoved(p));
-//! // on each host tick:   if view.wants_frame() { let out = view.frame(); }
+//! // on each host tick:   view.poll(); if view.wants_frame() { let out = view.frame(); }
 //! ```
 
 use std::time::{Duration, Instant};
@@ -100,6 +100,13 @@ impl<H: AppHost> Embedded<H> {
     /// Something needs drawing: input arrived or an animation is due.
     pub fn wants_frame(&self) -> bool {
         self.dirty || self.wake.is_some_and(|w| Instant::now() >= w)
+    }
+
+    /// Serve the system clipboard: another app may be waiting on a paste
+    /// of what this view copied. Call it from the owner's idle timer, a
+    /// few times a second, whether or not a frame is wanted.
+    pub fn poll(&mut self) {
+        self.clipboard.poll();
     }
 
     /// Rebuild from the queued events, draw and present.

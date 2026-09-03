@@ -291,3 +291,12 @@ every Wayland app does.
 **Rejected:** A data-control client on a second connection (the same
 trust filter blocks it). Reaching winit's proxies through the
 `wayland-client` crate (D001).
+**Learned:** winit's Wayland loop drops a wake-up that brought it no
+events of its own when the app sits in plain `Wait`, and another app's
+paste request is exactly such a wake-up: it lands on the clipboard's
+queue alone. Left unanswered, the paster waits for an EOF that never
+comes (Lantern-DE's terminal reads a paste with no timeout, so its
+clipboard thread stuck for good). The harness therefore idles with a
+far `WaitUntil` deadline instead of `Wait` whenever it has a system
+clipboard to serve; `examples/clipboard_probe.rs` reproduces the hang
+and the cure.

@@ -311,6 +311,11 @@ impl Clipboard {
         let mut bytes = Vec::new();
         // A timeout leaves what arrived in `bytes`; that is the best we get.
         let _ = ours.read_to_end(&mut bytes);
+        // Nothing at all means a dead offer (its source went away while
+        // we were not focused to hear about it): keep what we have.
+        if bytes.is_empty() {
+            return None;
+        }
         String::from_utf8(bytes).ok()
     }
 

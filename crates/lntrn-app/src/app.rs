@@ -51,6 +51,9 @@ impl Default for AppConfig {
 
 const PREFS_FILE: &str = "prefs.bin";
 const LAYOUT_FILE: &str = "layout.txt";
+/// How long an idle window sleeps between heartbeats while it has a system
+/// clipboard to serve (see [`App::about_to_wait`]).
+const IDLE_HEARTBEAT: Duration = Duration::from_secs(3600);
 
 /// What a host's [`AppHost::render`] gets to add GPU passes with.
 pub struct RenderCx<'f, 'a> {
@@ -314,8 +317,8 @@ impl<H: AppHost> ApplicationHandler for App<H> {
     }
 
     fn new_events(&mut self, _event_loop: &ActiveEventLoop, cause: StartCause) {
-        if matches!(cause, StartCause::ResumeTimeReached { .. }) {
-            self.wake = None;
+        // An animation's wake-up: rebuild. The idle heartbeat is not one.
+        if matches!(cause, StartCause::ResumeTimeReached { .. }) && self.wake.take().is_some() {
             self.dirty = true;
         }
     }
@@ -334,9 +337,16 @@ impl<H: AppHost> ApplicationHandler for App<H> {
             w.window.request_redraw();
         }
         // Sleep until input, or until the running animation's next frame.
+        // With a system clipboard to serve, never plain `Wait`: winit skips
+        // this callback when a wake-up brought it no events of its own, and
+        // another app's paste request is exactly that (it lands on the
+        // clipboard's queue alone). A far deadline keeps every wake-up
+        // reaching the poll above; the deadline itself costs one no-op
+        // wake an hour.
+        let idle = if self.win.as_ref().is_some_and(|w| w.clipboard.available()) { ControlFlow::WaitUntil(Instant::now() + IDLE_HEARTBEAT) } else { ControlFlow::Wait };
         event_loop.set_control_flow(match self.wake {
             Some(at) => ControlFlow::WaitUntil(at),
-            None => ControlFlow::Wait,
+            None => idle,
         });
     }
 }

@@ -131,7 +131,8 @@ the event vocabulary so the harness and the shell stay apart. The
 `UiState::clipboard`; the harness pulls the system clipboard in before a
 rebuild that carries a paste key and pushes ours out after a copy
 (`lntrn_app::clipboard`, over the window's own Wayland connection with a
-`wl_data_device` of ours, U018; in-app elsewhere). *Input methods*: a
+`wl_data_device` of ours, U018; in-app elsewhere), and serves other apps'
+pastes from a private queue even while the window sits idle. *Input methods*: a
 composition arrives as `Event::ImePreedit`, the
 focused text widget shows it inline at its caret with an underline and
 reports the caret rect (`ShellOutput::ime`) so the harness can place the

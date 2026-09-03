@@ -50,21 +50,21 @@ impl Gfx {
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn rebuild<H: AppHost>(gfx: &mut Gfx, host: &mut H, shell: &mut Shell<H>, text: &mut TextEngine, draw: &mut DrawList, events: &[Event], scale: f64, ws: WindowState, clipboard: &mut Clipboard) -> (ShellOutput, bool) {
     let window_rect = gfx.window_rect();
-    // A paste is coming: bring the system clipboard in first.
-    if events.iter().any(Event::is_paste)
-        && let Some(text) = clipboard.read()
-    {
-        shell.state.clipboard = text;
-    }
     let mut evs: &[Event] = events;
     let mut quit = false;
     let mut command = None;
     let mut out = None;
     let mut again = true;
     for _ in 0..MAX_REBUILDS {
+        // A paste is coming, or the host asked: bring the system clipboard in first.
+        if (evs.iter().any(Event::is_paste) || std::mem::take(&mut shell.state.clipboard_wanted))
+            && let Some(text) = clipboard.read()
+        {
+            shell.state.clipboard = text;
+        }
         draw.clear();
         let o = shell.frame(host, evs, window_rect, scale, ws, text, draw);
-        again = o.rebuild_again;
+        again = o.rebuild_again || shell.state.clipboard_wanted;
         quit |= o.quit;
         command = command.or(o.window_command);
         evs = &[];

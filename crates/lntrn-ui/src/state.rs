@@ -100,6 +100,10 @@ pub struct UiState {
     /// ([`Self::take_clipboard_dirty`]).
     pub clipboard: String,
     clipboard_dirty: bool,
+    /// Set by a host or widget that wants the *system* clipboard's text
+    /// in [`Self::clipboard`] on the next rebuild (a paste that no key
+    /// started). The harness reads it in and rebuilds once more.
+    pub clipboard_wanted: bool,
     /// A file from outside is being dragged over the window: drop zones
     /// light up.
     pub hovering_files: bool,
@@ -177,6 +181,7 @@ impl UiState {
             wake_after: None,
             clipboard: String::new(),
             clipboard_dirty: false,
+            clipboard_wanted: false,
             hovering_files: false,
             dropped_files: Vec::new(),
             ime_preedit: None,
