@@ -16,7 +16,6 @@ lntrn-props    reflection: describe a struct once             pure std
 lntrn-core     handles, arenas, chunked vecs, jobs, undo, log pure std
 lntrn-math     f64 vectors, matrices, quaternions, rects      pure std
 lntrn-demo     the widget gallery and a reference host
-lntrn-template the smallest complete app, to copy
 ```
 
 Nothing depends upward. Everything below `lntrn-render` builds and tests
@@ -79,9 +78,23 @@ lntrn-app = { path = "../lantern-ui-2/crates/lntrn-app" }
 Then implement `lntrn_ui::Host` (two required methods: `draw_body` and
 `run`), build a `Shell`, and call `lntrn_app::run`.
 
-The quickest start is to copy `crates/lntrn-template`: one editor, a
-menu, a key binding, the palette, and the shell's preferences editor in
-about a hundred commented lines (`cargo run -p lntrn-template`).
+The quickest start is `crates/lntrn-app/examples/template.rs`: one
+editor, a menu, a key binding, the palette, and the shell's preferences
+editor in about a hundred commented lines. See it run with
+`cargo run -p lntrn-app --example template`, then copy it into a new
+crate's `src/main.rs` with this manifest:
+
+```toml
+[package]
+name = "my-app"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+lntrn-app = { path = "../lantern-ui-2/crates/lntrn-app" }
+lntrn-ui  = { path = "../lantern-ui-2/crates/lntrn-ui" }
+```
+
 `crates/lntrn-demo` is the full tour; `docs/ARCHITECTURE.md` explains
 the pieces.
 

@@ -828,14 +828,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lntrn-template"
-version = "0.2.0"
-dependencies = [
- "lntrn-app",
- "lntrn-ui",
-]
-
-[[package]]
 name = "lntrn-text"
 version = "0.2.0"
 dependencies = [

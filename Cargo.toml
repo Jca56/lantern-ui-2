@@ -10,7 +10,6 @@ members = [
     "crates/lntrn-ui",
     "crates/lntrn-app",
     "crates/lntrn-demo",
-    "crates/lntrn-template",
 ]
 
 [workspace.package]

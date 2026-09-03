@@ -1,5 +1,7 @@
-//! The smallest complete Lantern app. Copy this crate, rename it in its
-//! `Cargo.toml`, and grow from here: `cargo run -p lntrn-template`.
+//! The smallest complete Lantern app. Copy this file into a new crate's
+//! `src/main.rs`, give the crate `lntrn-app` and `lntrn-ui` as
+//! dependencies, and grow from here. To see it run as it is:
+//! `cargo run -p lntrn-app --example template`.
 //!
 //! A Lantern app is a [`Host`]: it names its editors, draws each one with
 //! immediate-mode widgets, and carries out the actions its menus, keys
