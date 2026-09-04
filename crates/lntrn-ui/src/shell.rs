@@ -148,6 +148,10 @@ impl<H: Host> Shell<H> {
                 let browser = FileBrowser::new(std::path::Path::new(&suggest), save);
                 self.popup = Some(Popup::Path { action, browser });
             }
+            ShellRequest::FolderDialog { action, suggest } => {
+                let browser = FileBrowser::new_folder(std::path::Path::new(&suggest));
+                self.popup = Some(Popup::Path { action, browser });
+            }
             ShellRequest::ContextMenu(menu) => self.popup = Some(Popup::Context(menu)),
             ShellRequest::Dialog(d) => self.popup = Some(Popup::Dialog(d)),
             ShellRequest::Toast(text) => self.toasts.push(crate::toasts::Toast { text, at: self.state.now }),
@@ -457,9 +461,27 @@ impl<H: Host> Shell<H> {
             self.state.request_rebuild = true;
         }
 
+        // Closing the window — its ×, the window system, the host's own
+        // request — is put to the host first; it may keep the window and
+        // ask about unsaved work instead.
+        let close_asked = matches!(window_command, Some(WindowCommand::Close)) || std::mem::take(&mut self.close_window) || events.iter().any(|e| matches!(e, Event::CloseRequested));
+        if matches!(window_command, Some(WindowCommand::Close)) {
+            window_command = None;
+        }
+        if close_asked {
+            let mut more = Vec::new();
+            let allowed = host.close_requested(self.title.is_none(), &mut HostCx { pointer, requests: &mut more });
+            for r in more {
+                quit |= self.request(host, r);
+            }
+            if allowed {
+                window_command = Some(WindowCommand::Close);
+            }
+            self.state.request_rebuild = true;
+        }
+
         self.state.end_frame();
         self.stats = FrameStats { rebuild_ms: started.elapsed().as_secs_f64() * 1000.0, vertices: draw.vertex_count(), frames: self.stats.frames + 1 };
-        let window_command = window_command.or(std::mem::take(&mut self.close_window).then_some(WindowCommand::Close));
         let cursor = if captured {
             CursorIcon::Grabbing
         } else if let Some(c) = drag_cursor {

@@ -1,6 +1,8 @@
 //! A file browser for Save, Open, Import and Export (D030): the folder's
 //! entries with folders first, files filtered to the wanted extension, a
-//! path you can type or climb, and a name field. `std::fs` does the work.
+//! path you can type or climb, and a name field — or, choosing a folder,
+//! the folders alone and a *Choose* button for the one shown. `std::fs`
+//! does the work.
 
 use std::path::{Path, PathBuf};
 
@@ -25,6 +27,8 @@ pub struct FileBrowser {
     /// shows all files. The first is added to a bare name.
     exts: Vec<String>,
     pub save: bool,
+    /// Only folders show, and *Choose* takes the one the browser is in.
+    pub folders: bool,
     entries: Vec<Entry>,
     error: Option<String>,
 }
@@ -55,7 +59,16 @@ impl FileBrowser {
             e => vec![e.to_owned()],
         };
         let parent = suggest.parent().filter(|p| !p.as_os_str().is_empty() && p.is_dir()).map(Path::to_path_buf);
-        let mut fb = Self { dir: parent.unwrap_or_else(home), dir_text: String::new(), name, exts, save, entries: Vec::new(), error: None };
+        let mut fb = Self { dir: parent.unwrap_or_else(home), dir_text: String::new(), name, exts, save, folders: false, entries: Vec::new(), error: None };
+        fb.refresh();
+        fb
+    }
+
+    /// A folder chooser starting in `start` (its parent when it is a
+    /// file; home when it is neither).
+    pub fn new_folder(start: &Path) -> Self {
+        let dir = if start.is_dir() { Some(start.to_path_buf()) } else { start.parent().filter(|p| p.is_dir()).map(Path::to_path_buf) };
+        let mut fb = Self { dir: dir.unwrap_or_else(home), dir_text: String::new(), name: String::new(), exts: Vec::new(), save: false, folders: true, entries: Vec::new(), error: None };
         fb.refresh();
         fb
     }
@@ -78,7 +91,7 @@ impl FileBrowser {
                     }
                     let is_dir = e.path().is_dir();
                     let lower = name.to_lowercase();
-                    if !is_dir && !wanted.is_empty() && !wanted.iter().any(|w| lower.ends_with(w)) {
+                    if !is_dir && (self.folders || (!wanted.is_empty() && !wanted.iter().any(|w| lower.ends_with(w)))) {
                         continue;
                     }
                     self.entries.push(Entry { name, is_dir });
@@ -144,7 +157,11 @@ pub fn draw(ui: &mut Ui, fb: &mut FileBrowser, rect: Rect) -> Verdict {
     let m = ui.m;
     let mut verdict = Verdict::Open;
     let what = if fb.exts.is_empty() { "all files".to_owned() } else { format!("{} files", fb.exts.iter().map(|e| format!(".{e}")).collect::<Vec<_>>().join(" / ")) };
-    ui.label_dim(&format!("{} · {what}", if fb.save { "Save as" } else { "Open" }));
+    if fb.folders {
+        ui.label_dim("Choose a folder · open one to look inside it");
+    } else {
+        ui.label_dim(&format!("{} · {what}", if fb.save { "Save as" } else { "Open" }));
+    }
 
     // Where: home, up, and the path itself.
     ui.row(|ui| {
@@ -204,6 +221,26 @@ pub fn draw(ui: &mut Ui, fb: &mut FileBrowser, rect: Rect) -> Verdict {
         }
     }
 
+    // Choosing a folder: the one shown, and Cancel.
+    if fb.folders {
+        let shown = fb.dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| fb.dir.display().to_string());
+        let style = ui.text_style();
+        let buttons_w = ui.measure("Choose", &style) + ui.measure("Cancel", &style) + m.pad * 4.0 + m.gap * 2.0;
+        ui.row(|ui| {
+            let w = (ui.avail_width() - buttons_w).max(m.px(100.0));
+            let r = ui.alloc(Vec2::new(w, m.widget_h));
+            let text_style = ui.text_style();
+            let ink = ui.theme.text;
+            ui.text_in_rect(&shown, &text_style, r, ink);
+            if ui.button("Choose").clicked {
+                verdict = Verdict::Confirm(fb.dir.clone());
+            }
+            if ui.button("Cancel").clicked {
+                verdict = Verdict::Cancel;
+            }
+        });
+        return verdict;
+    }
     // The name row: field, then the verb and Cancel.
     let verb = if fb.save { "Save" } else { "Open" };
     let style = ui.text_style();
@@ -263,6 +300,14 @@ mod tests {
         let glb = FileBrowser::new(Path::new("untitled.glb"), true);
         assert_eq!(glb.exts, vec!["glb", "gltf"], "both glTF spellings show");
         assert_eq!(glb.chosen().unwrap().extension().unwrap(), "glb");
+        // Choosing a folder: folders alone, starting where asked.
+        let folders = FileBrowser::new_folder(&dir);
+        assert!(folders.folders);
+        assert_eq!(folders.dir(), dir.as_path());
+        let names: Vec<&str> = folders.entries.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, vec!["Alpha", "zeta"]);
+        let from_file = FileBrowser::new_folder(&dir.join("b.prism"));
+        assert_eq!(from_file.dir(), dir.as_path(), "a file means its folder");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -72,8 +72,13 @@ go to `Host::run`. Keys work the same way: `Host::key` resolves a press
 against its `KeyConfig` and returns the action.
 
 **Requests** — while drawing or running, the host pushes `ShellRequest`s:
-open a menu, the palette, a path dialog, a context menu; flip a preference;
-rebuild; quit. The shell applies them at the end of the rebuild.
+open a menu, the palette, a path or folder dialog, a context menu; flip a
+preference; rebuild; quit. The shell applies them at the end of the rebuild.
+
+**Closing** — the title bar's `×`, the window system's close, and
+`ShellRequest::CloseWindow` all reach `Host::close_requested` first; a host
+with unsaved work returns `false` and asks with a dialog whose button
+quits or closes for real. The main window's close quits the app.
 
 **Context menus** — the host builds a `ContextMenu` (title, tabs of items,
 submenus, live `props!` panels with Apply, custom rows it draws itself, a
@@ -106,7 +111,10 @@ scroll area brings a newly focused widget into view.
 **Time** — `UiState::now` is the frame clock. `Ui::animate` eases a
 per-widget value toward a target and keeps asking for frames
 (`request_redraw_after`) until it rests; the harness sleeps with
-`WaitUntil` in between and is idle otherwise. Toasts and the busy bar use
+`WaitUntil` in between and is idle otherwise. A thread with something
+to show (a terminal's output, a finished export) wakes the loop through
+the `lntrn_app::Waker` the host is handed at start (`AppHost::waker`);
+wakes coalesce until the loop has turned, and every window rebuilds. Toasts and the busy bar use
 the same mechanism. The `reduce_motion` preference turns all of it off:
 values snap, toasts go when their time is up, busy bars hold still, and
 nothing asks for a frame it does not need.

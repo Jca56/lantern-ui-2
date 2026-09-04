@@ -2,6 +2,8 @@
 //! GPU, each with a shell of its own, and the rebuild → draw → present
 //! cycle of each (see `win.rs`).
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use lntrn_core::{log_error, log_info};
@@ -13,7 +15,7 @@ use lntrn_ui::{Host, NewWindow, Shell};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{StartCause, WindowEvent};
-use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::window::{Window, WindowAttributes, WindowId};
 
 use crate::frame::GpuShared;
@@ -53,6 +55,34 @@ const LAYOUT_FILE: &str = "layout.txt";
 /// clipboard to serve (see [`App::about_to_wait`]).
 const IDLE_HEARTBEAT: Duration = Duration::from_secs(3600);
 
+/// The event the loop is woken with from another thread.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Wake;
+
+/// Wakes the event loop from any thread: every window rebuilds as if
+/// input had arrived, so a thread that produced something to show (a
+/// terminal's output, a finished export) need not be polled. Cheap to
+/// clone and hand around; wakes coalesce until the loop has turned.
+#[derive(Clone)]
+pub struct Waker {
+    proxy: EventLoopProxy<Wake>,
+    pending: Arc<AtomicBool>,
+}
+
+impl Waker {
+    pub fn wake(&self) {
+        if !self.pending.swap(true, Ordering::AcqRel) {
+            let _ = self.proxy.send_event(Wake);
+        }
+    }
+}
+
+impl std::fmt::Debug for Waker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Waker")
+    }
+}
+
 /// What a host's [`AppHost::render`] gets to add GPU passes with.
 pub struct RenderCx<'f, 'a> {
     pub gpu: &'a Gpu,
@@ -71,6 +101,12 @@ pub struct RenderCx<'f, 'a> {
 /// A [`Host`] that also takes part in the GPU frame. Every hook has a
 /// do-nothing default; a UI-only app implements none of them.
 pub trait AppHost: Host + Sized + 'static {
+    /// The loop's waker, handed over once before the first window opens.
+    /// Keep it for threads that have something to show. The embedded
+    /// harness has no loop of its own and never calls this.
+    fn waker(&mut self, waker: Waker) {
+        let _ = waker;
+    }
     /// The GPU exists: make pipelines and buffers, upload pictures.
     fn init_gpu(&mut self, gpu: &Gpu, format: wgpu::TextureFormat, images: &mut Images) {
         let _ = (gpu, format, images);
@@ -95,7 +131,7 @@ pub trait AppHost: Host + Sized + 'static {
 
 /// Open the window and run until it closes. With `persist` on, saved
 /// preferences and layout are loaded first and written back on exit.
-pub fn run<H: AppHost>(config: AppConfig, host: H, mut shell: Shell<H>) {
+pub fn run<H: AppHost>(config: AppConfig, mut host: H, mut shell: Shell<H>) {
     lntrn_core::log::init();
     if config.persist && let Some(dir) = persist::config_dir(&config.app_id) {
         if persist::load(&dir.join(PREFS_FILE), &mut shell.prefs) {
@@ -109,10 +145,12 @@ pub fn run<H: AppHost>(config: AppConfig, host: H, mut shell: Shell<H>) {
             }
         }
     }
-    let event_loop = EventLoop::new().expect("create event loop");
+    let event_loop = EventLoop::<Wake>::with_user_event().build().expect("create event loop");
     // Redraw on demand: an idle app sits at 0% CPU/GPU.
     event_loop.set_control_flow(ControlFlow::Wait);
-    let mut app = App::new(config, host, shell);
+    let pending = Arc::new(AtomicBool::new(false));
+    host.waker(Waker { proxy: event_loop.create_proxy(), pending: Arc::clone(&pending) });
+    let mut app = App::new(config, host, shell, pending);
     if let Err(e) = event_loop.run_app(&mut app) {
         log_error!("event loop: {e}");
     }
@@ -131,14 +169,16 @@ struct App<H: AppHost> {
     shell: Option<Shell<H>>,
     next_id: u32,
     quit: bool,
+    /// A wake is on its way through the loop (see [`Waker`]).
+    wake_pending: Arc<AtomicBool>,
 }
 
 impl<H: AppHost> App<H> {
-    fn new(config: AppConfig, host: H, shell: Shell<H>) -> Self {
+    fn new(config: AppConfig, host: H, shell: Shell<H>, wake_pending: Arc<AtomicBool>) -> Self {
         let t = std::time::Instant::now();
         let text = TextEngine::new(&config.sans, &config.mono);
         log_info!("fonts: {} faces in {:.0} ms", text.face_count(), t.elapsed().as_secs_f64() * 1000.0);
-        Self { config, shared: None, wins: Vec::new(), text, draw: DrawList::new(), host, shell: Some(shell), next_id: 0, quit: false }
+        Self { config, shared: None, wins: Vec::new(), text, draw: DrawList::new(), host, shell: Some(shell), next_id: 0, quit: false, wake_pending }
     }
 
     /// Write preferences and the main window's layout for next time.
@@ -234,7 +274,15 @@ impl<H: AppHost> App<H> {
     }
 }
 
-impl<H: AppHost> ApplicationHandler for App<H> {
+impl<H: AppHost> ApplicationHandler<Wake> for App<H> {
+    /// Another thread has something to show: every window rebuilds.
+    fn user_event(&mut self, _event_loop: &ActiveEventLoop, _event: Wake) {
+        self.wake_pending.store(false, Ordering::Release);
+        for w in &mut self.wins {
+            w.dirty = true;
+        }
+    }
+
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.wins.is_empty()
             && let Some(shell) = self.shell.take()
@@ -251,13 +299,10 @@ impl<H: AppHost> ApplicationHandler for App<H> {
         if let Some(shared) = &self.shared {
             self.wins[i].handle(&event, shared);
         }
-        match event {
-            WindowEvent::CloseRequested if i == 0 => event_loop.exit(),
-            WindowEvent::CloseRequested => {
-                self.wins.remove(i);
-            }
-            WindowEvent::RedrawRequested => self.render(event_loop, i),
-            _ => {}
+        // A close request travels through the shell as an event, so the
+        // host can keep the window and ask about unsaved work first.
+        if let WindowEvent::RedrawRequested = event {
+            self.render(event_loop, i);
         }
     }
 

@@ -2,13 +2,16 @@
 
 use lntrn_math::Vec2;
 use lntrn_ui::testing::Harness;
-use lntrn_ui::{Action, AreaCx, Axis, Dialog, Host, HostCx, Key, KeyPress, Modifiers, NewWindow, Shell, ShellRequest, Ui, WidgetId, WindowCommand, actions};
+use lntrn_ui::{Action, AreaCx, Axis, Dialog, Event, Host, HostCx, Key, KeyPress, Modifiers, NewWindow, Shell, ShellRequest, Ui, WidgetId, WindowCommand, actions};
 
 #[derive(Default)]
 struct Tiny {
     ran: Vec<String>,
     /// What the Rename dialog's field holds.
     name: String,
+    /// Unsaved work: a close is answered with a question instead.
+    dirty: bool,
+    closes_asked: Vec<bool>,
 }
 
 impl Host for Tiny {
@@ -47,6 +50,14 @@ impl Host for Tiny {
             }
         }
         false
+    }
+    fn close_requested(&mut self, main: bool, cx: &mut HostCx) -> bool {
+        self.closes_asked.push(main);
+        if self.dirty {
+            cx.request(ShellRequest::Dialog(Dialog::confirm("Unsaved changes", "Quit anyway?", "Quit", Action::new(actions::QUIT))));
+            return false;
+        }
+        true
     }
     fn key(&self, press: KeyPress, _: Option<u8>) -> Option<Action> {
         match press.key {
@@ -272,4 +283,39 @@ fn windows_open_from_the_area_menu_and_close_by_request() {
     assert_eq!(out.window_command, Some(WindowCommand::Close));
     let out = h.shell_frame(&mut shell, &mut host);
     assert_eq!(out.window_command, None, "asked once");
+}
+
+#[test]
+fn closing_asks_the_host_first() {
+    let mut h = Harness::new(1000.0, 700.0);
+    let mut shell: Shell<Tiny> = Shell::new(0);
+    let mut host = Tiny::default();
+    h.shell_frame(&mut shell, &mut host);
+    // Nothing unsaved: the window system's close goes through.
+    h.event(Event::CloseRequested);
+    let out = h.shell_frame(&mut shell, &mut host);
+    assert_eq!(out.window_command, Some(WindowCommand::Close));
+    assert_eq!(host.closes_asked, vec![true], "asked, as the main window");
+    // Unsaved work: the close is held and a dialog asks instead.
+    host.dirty = true;
+    h.event(Event::CloseRequested);
+    let out = h.shell_frame(&mut shell, &mut host);
+    assert_eq!(out.window_command, None, "kept open");
+    assert!(shell.popup_open(), "the question is up");
+    // Quit from the dialog is not a close request: it goes straight through.
+    h.key(Key::Enter);
+    let out = h.shell_settle(&mut shell, &mut host, 3);
+    assert!(out.quit);
+    assert_eq!(host.closes_asked.len(), 2);
+    // The host's own close request is asked about the same way; a
+    // secondary window says so.
+    let mut other: Shell<Tiny> = Shell::new(0);
+    other.title = Some("Second".into());
+    host.dirty = false;
+    h.shell_frame(&mut other, &mut host);
+    host.run(&Action::new("x"), &mut HostCx { pointer: Vec2::ZERO, requests: &mut Vec::new() });
+    other.request(&mut host, ShellRequest::CloseWindow);
+    let out = h.shell_frame(&mut other, &mut host);
+    assert_eq!(out.window_command, Some(WindowCommand::Close));
+    assert_eq!(host.closes_asked.last(), Some(&false), "not the main window");
 }

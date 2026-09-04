@@ -209,6 +209,10 @@ pub enum ShellRequest {
     /// `path` argument set to the choice. `suggest` pre-fills the field and
     /// its extension filters the listing.
     PathDialog { action: Action, save: bool, suggest: String },
+    /// Ask for a folder: the browser shows folders alone and *Choose*
+    /// takes the one it is in. `suggest` is where it starts. Runs
+    /// `action` with its `path` argument set to the folder.
+    FolderDialog { action: Action, suggest: String },
     /// Open a context menu at its `pos`.
     ContextMenu(Box<ContextMenu>),
     /// Ask a modal question.
@@ -432,6 +436,15 @@ pub trait Host {
     /// title, tools and items up to date with what changed.
     fn refresh_context_menu(&mut self, menu: &mut ContextMenu) {
         let _ = menu;
+    }
+    /// The window is closing: its title bar's `×`, the window system, or
+    /// a [`ShellRequest::CloseWindow`]. Return `false` to keep it open —
+    /// after asking about unsaved work with a dialog whose button runs
+    /// [`actions::QUIT`] or [`ShellRequest::CloseWindow`] again. `main` is
+    /// whether this is the main window, whose close quits the app.
+    fn close_requested(&mut self, main: bool, cx: &mut HostCx) -> bool {
+        let _ = (main, cx);
+        true
     }
     /// Files dropped on the window from outside that no
     /// [`crate::Ui::drop_zone`] took. `area` and `editor` are what was

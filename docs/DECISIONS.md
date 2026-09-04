@@ -421,3 +421,43 @@ should not know about, and a function is the smallest thing that draws.
 **Rejected:** A registry of named icons (a string lookup for what a
 pointer does directly); closures with captures (`Icon` would lose `Copy`
 and `Eq`, and menus clone it freely).
+
+## U025 — Threads wake the loop through a `Waker`
+**Status:** Accepted (Alva, 2026-09-04)
+**Decision:** `lntrn_app::run` hands the host a `Waker` once
+(`AppHost::waker`) before the first window opens. A thread calls
+`wake()` when it has something to show; the loop rebuilds every window
+as if input had arrived. Wakes coalesce through one atomic flag until
+the loop has turned, so a chatty producer costs one rebuild per turn.
+The embedded harness has no loop and hands out nothing; a host without
+a waker falls back to `request_redraw_after` polling.
+**Why:** lntrn-code's terminal polled at 60 Hz while output flowed and
+at 2 Hz forever after, against U008's zero-idle rule. A wake is what a
+pty reader, a build runner or a network reply actually needs.
+**Rejected:** Exposing winit's `EventLoopProxy` (the framework's own
+vocabulary stays window-system free); polling in the framework.
+
+## U026 — The host has a say before a window closes
+**Status:** Accepted (Alva, 2026-09-04)
+**Decision:** The title bar's `×`, `Event::CloseRequested` from the
+window system and `ShellRequest::CloseWindow` all go through
+`Host::close_requested(main, cx)` at the end of the rebuild. `true`
+closes (the main window's close quits); `false` keeps the window, and
+the host asks with a dialog whose button runs `shell.quit` or closes
+again. The winit harness no longer exits on `CloseRequested` itself;
+the event rides the shell like any other. The embedded harness reports
+the allowed close in `EmbedOutput::close`.
+**Why:** An editor that loses unsaved work to a stray click on `×` is
+not an editor. Ctrl+Q could ask; the frame's own button could not.
+
+## U027 — A folder dialog beside the file dialog
+**Status:** Accepted (Alva, 2026-09-04)
+**Decision:** `ShellRequest::FolderDialog { action, suggest }` opens the
+file browser in folder mode (`FileBrowser::new_folder`): folders alone
+in the listing, opened by a click, and a *Choose* button that takes the
+one shown. The action runs with `path` set to that folder.
+**Why:** The file browser confirms through a name; a folder has none to
+type. lntrn-code's Open Folder had to pretend with a `.` name.
+**Rejected:** A `folder` flag on `PathDialog` (every host that builds one
+would have to change); a separate widget (the browser already lists
+folders and climbs).

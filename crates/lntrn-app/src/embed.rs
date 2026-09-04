@@ -44,8 +44,12 @@ pub struct EmbedOutput {
     pub cursor: CursorIcon,
     /// An animation wants another frame after this many seconds.
     pub wake_after: Option<f64>,
-    /// The UI asked to close (a Quit action).
+    /// The UI asked to quit (a Quit action).
     pub quit: bool,
+    /// The view asked to close: its title bar's `×`, or an
+    /// [`Event::CloseRequested`] the owner pushed that the host allowed
+    /// (see [`lntrn_ui::Host::close_requested`]).
+    pub close: bool,
     /// A text widget has focus and its caret is here (physical pixels):
     /// tell the owner's input method. `None` means no text focus.
     pub ime: Option<Rect>,
@@ -133,7 +137,8 @@ impl<H: AppHost> Embedded<H> {
             self.dirty = true;
         }
         self.wake = out.wake_after.map(|s| Instant::now() + Duration::from_secs_f64(s));
-        EmbedOutput { cursor: out.cursor, wake_after: out.wake_after, quit: out.quit, ime: out.ime }
+        let close = matches!(out.window_command, Some(lntrn_ui::WindowCommand::Close));
+        EmbedOutput { cursor: out.cursor, wake_after: out.wake_after, quit: out.quit, close, ime: out.ime }
     }
 
     pub fn host(&self) -> &H {

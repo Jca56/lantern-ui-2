@@ -52,7 +52,7 @@ them.
 - **Shell**: title bar with menus (rules, greyed rows, submenus, key
   hints, keyboard navigation), resizable and swappable areas that stack
   editors as tabs, maximize,
-  command palette, file browser, modal dialogs (with the host's own
+  command palette, file and folder browsers, modal dialogs (with the host's own
   widgets inside when it wants them), toasts, rich text (a small markdown
   for help panes and dialog bodies), context menus with
   tool strips, keyboard focus with rings and scroll-into-view, the system
