@@ -406,3 +406,18 @@ when it wants the message elsewhere.
 **Rejected:** A `Validator` trait and a set of stock rules (a closure is
 shorter than any of them); the message on a line under the field (it
 moves the layout every keystroke).
+
+## U024 — An app's icon is a function
+**Status:** Accepted (2026-09-03)
+**Decision:** `Icon::Custom(IconFn)` carries a plain function pointer
+`fn(&mut DrawList, Rect, Color, f64)`, the same shape the built-ins are
+drawn with, so it is `Copy` and `Eq` and goes wherever an `Icon` goes:
+tool strips, icon buttons, spinners. The app keeps its icons in its own
+crate (`lntrn-demo/src/icons.rs` shows one) and draws them with the same
+lines, rings and rects, at the same 0.28 half-extent, so they sit level
+with the built-ins.
+**Why:** Prism's gizmos and any app's own verbs need icons the framework
+should not know about, and a function is the smallest thing that draws.
+**Rejected:** A registry of named icons (a string lookup for what a
+pointer does directly); closures with captures (`Icon` would lose `Copy`
+and `Eq`, and menus clone it freely).

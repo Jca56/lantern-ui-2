@@ -1,11 +1,21 @@
 //! Small procedural icons drawn with lines and rects, so the UI needs no
-//! icon font. Each draws centred in a rect with a stroke width.
+//! icon font. Each draws centred in a rect with a stroke width. An app
+//! adds its own as [`Icon::Custom`] with a function of the same shape.
 
 use lntrn_math::{Color, Rect, Vec2};
 use lntrn_render::DrawList;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// What draws a custom icon: the draw list, the rect to centre in, the
+/// colour, and the stroke width the built-ins use at that size. Keep the
+/// glyph within about 0.28 of the rect's smaller side from the centre,
+/// like the built-ins, so it sits level with them in a strip.
+pub type IconFn = fn(&mut DrawList, Rect, Color, f64);
+
+#[derive(Clone, Copy, Debug)]
 pub enum Icon {
+    /// An app's own icon, drawn by its function; goes anywhere a built-in
+    /// does (tool strips, icon buttons).
+    Custom(IconFn),
     Vertex,
     Edge,
     Face,
@@ -63,6 +73,17 @@ pub enum Icon {
     Filter,
     Star,
 }
+
+// Two custom icons are the same icon when they are the same function.
+impl PartialEq for Icon {
+    fn eq(&self, other: &Icon) -> bool {
+        match (self, other) {
+            (Icon::Custom(a), Icon::Custom(b)) => std::ptr::fn_addr_eq(*a, *b),
+            (a, b) => std::mem::discriminant(a) == std::mem::discriminant(b),
+        }
+    }
+}
+impl Eq for Icon {}
 
 impl Icon {
     /// Every icon, for a gallery.
@@ -274,6 +295,7 @@ pub fn draw(d: &mut DrawList, rect: Rect, icon: Icon, color: Color, stroke: f64)
             d.line(p(1.0, -0.5), p(1.0, 0.7), stroke, color);
             d.line(p(1.0, 0.7), Vec2::new(body.max.x, body.max.y - body.height() * 0.3), stroke, color);
         }
+        Icon::Custom(f) => f(d, rect, color, stroke),
         other => crate::icons_ui::draw(d, c, s, other, color, stroke),
     }
 }

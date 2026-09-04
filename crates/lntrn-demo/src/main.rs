@@ -1,10 +1,9 @@
-//! The widget gallery, and a small complete [`Host`] to copy from.
-//! `cargo run -p lntrn-demo`.
-//!
-//! Five editors (Gallery, Preferences, Notes, Key Bindings, Empty), File
-//! and Help menus on the title bar (with rules, a greyed row, a submenu
-//! and key hints), a command palette (F3), a keymap, a right-click context
-//! menu with a tool strip, a bar, a submenu, a live property panel and a
+//! The widget gallery, and a small complete [`Host`] to copy from:
+//! `cargo run -p lntrn-demo`. Five editors (Gallery, Preferences, Notes,
+//! Key Bindings, Empty), File and Help menus on the title bar (with rules,
+//! a greyed row, a submenu and key hints), a command palette (F3), a
+//! keymap, a right-click context menu with a tool strip (one tool wearing
+//! the demo's own icon), a bar, a submenu, a live property panel and a
 //! custom row, and files dropped from outside — every door into the
 //! shell, opened once.
 
@@ -16,8 +15,9 @@ use lntrn_core::Undo;
 use lntrn_image::Image;
 use lntrn_props::{Reflect, Value, props};
 use lntrn_ui::gallery::{self, GalleryState, TABS};
-use lntrn_ui::keymap::CTX_WINDOW;
-use lntrn_ui::{Action, AreaCx, AreaId, Axis, ContextMenu, Dialog, DragPayload, Host, HostCx, Icon, Item, Key, KeyConfig, KeyItem, KeyPress, Menu, MenuItem, Modifiers, NewWindow, Shell, ShellRequest, Tool, Trigger, Ui, actions, prefs};
+use lntrn_ui::{Action, AreaCx, AreaId, Axis, ContextMenu, Dialog, DragPayload, Host, HostCx, Icon, Item, Key, KeyConfig, KeyItem, KeyPress, Menu, MenuItem, Modifiers, NewWindow, Shell, ShellRequest, Tool, Trigger, Ui, actions, keymap::CTX_WINDOW, prefs};
+
+mod icons;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Editor {
@@ -196,7 +196,7 @@ impl Demo {
                 Tool::new(Icon::Minus, "Reset the counter", Action::new("demo.reset")),
                 Tool::new(Icon::Grid, "Snap to grid (a toggle)", Action::new("demo.toggle_b")).active(g.toggle_b),
             ])
-            .bar(vec![tab_tool(Icon::Solid, "Controls tab", 0), tab_tool(Icon::Edge, "Text tab", 1), tab_tool(Icon::Face, "Lists tab", 2)])
+            .bar(vec![tab_tool(Icon::Solid, "Controls tab", 0), tab_tool(Icon::Edge, "Text tab", 1), tab_tool(Icon::Face, "Lists tab", 2), tab_tool(Icon::Custom(icons::prism), "Pictures tab (the demo's own icon)", PICTURES_TAB)])
             .wide()
     }
 }

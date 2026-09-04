@@ -39,7 +39,7 @@ them.
 ## What is in the box
 
 - **Widgets**: labels, headings, paragraphs, buttons, icon buttons (47
-  procedural icons, no icon font), toggles, radio groups, tabs, sliders,
+  procedural icons plus an app's own through `Icon::Custom`, no icon font), toggles, radio groups, tabs, sliders,
   range sliders, vertical faders, an XY pad, drag numbers, spinners,
   validated text fields (red frame, the reason inside, Enter blocked),
   knobs, dropdowns, an editable combo box, menu buttons, selectables,
