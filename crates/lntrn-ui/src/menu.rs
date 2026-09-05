@@ -140,7 +140,7 @@ fn column<H: Host>(ui: &mut Ui, key: &str, items: &[MenuItem], panel: Rect, top:
         let r = ui.interact(ui.id(key).with_index(i), rect, if it.enabled { Sense::CLICK } else { Sense::NONE });
         let lit = (it.enabled && r.hovered) || keyboard == Some(i) || open_sub == Some(i);
         if lit {
-            ui.fill(rect, ui.theme.hover(ui.theme.header));
+            ui.fill(rect, ui.theme.hover(ui.theme.header.mid()));
         }
         if r.hovered && it.enabled {
             ui.state.cursor_icon = CursorIcon::Pointer;

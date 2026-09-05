@@ -2,7 +2,7 @@
 //! field, nested structs as collapsible sections, lists as editable rows.
 
 use lntrn_math::{Rect, Vec2, rad_to_deg, deg_to_rad};
-use lntrn_props::{FieldInfo, Kind, Reflect, ReflectList, Subtype, Value};
+use lntrn_props::{FieldInfo, Gradient, Kind, Reflect, ReflectList, Subtype, Value};
 
 use crate::state::CursorIcon;
 use crate::ui::{FILL, Sense, Ui};
@@ -23,7 +23,7 @@ impl Ui<'_> {
             *self.state.open(id) = !open;
         }
         let open = *self.state.open(id);
-        let base = if r.hovered { self.theme.hover(self.theme.header) } else { self.theme.header };
+        let base = if r.hovered { self.theme.hover_g(self.theme.header) } else { self.theme.header };
         self.fill_shaded(rect, base);
         self.draw.hline(rect.min.x, rect.max.x, rect.max.y - self.m.border, self.m.border, self.theme.border_dark);
         // Disclosure triangle.
@@ -217,6 +217,16 @@ impl Ui<'_> {
                     ui.label_dim(&v.to_hex_string());
                 });
                 changed.then_some(Value::Color(v))
+            }
+            Value::Gradient(g) => {
+                let mut v: Gradient = *g;
+                let mut changed = false;
+                self.row(|ui| {
+                    changed = ui.gradient_picker("gradient", &mut v);
+                    let text = if v.is_flat() { v.top.to_hex_string() } else { format!("{} → {}", v.top.to_hex_string(), v.bottom.to_hex_string()) };
+                    ui.label_dim(&text);
+                });
+                changed.then_some(Value::Gradient(v))
             }
             Value::Id(id) => {
                 self.label_dim(&format!("{id}"));

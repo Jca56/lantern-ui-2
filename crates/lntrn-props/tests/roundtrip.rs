@@ -3,7 +3,7 @@
 
 use lntrn_core::Id;
 use lntrn_math::{Color, Vec3};
-use lntrn_props::{Kind, Reflect, ReflectStatic, Subtype, Value, flags, props, serial, walk};
+use lntrn_props::{Gradient, Kind, Reflect, ReflectStatic, Subtype, Value, flags, props, serial, walk};
 
 props! {
     /// How a viewport shades geometry.
@@ -40,6 +40,8 @@ props! {
         pub samples: u32 = 16 => { id: 9, hard: 1..=4096 },
         pub scratch: i64 = 0 => { id: 10, flags: SKIP_SAVE | HIDDEN },
         implicit_id: f64 = 1.5,
+        /// The sky's two colors.
+        pub glow: Gradient = Gradient::flat(Color::BLACK) => { id: 12 },
     }
 }
 
@@ -64,6 +66,8 @@ fn metadata_is_generated() {
     assert_eq!(info.field("shading").unwrap().kind, Kind::Enum(Shading::info()));
     assert_eq!(info.field("samples").unwrap().kind, Kind::I64);
     assert_eq!(info.field("implicit_id").unwrap().id, 11, "index + 1");
+    assert_eq!(info.field("glow").unwrap().kind, Kind::Gradient);
+    assert_eq!(info.field("glow").unwrap().default, Value::Gradient(Gradient::flat(Color::BLACK)));
     assert!(info.field("scratch").unwrap().is_hidden());
     assert!(!info.field("scratch").unwrap().is_saved());
     // Light's power soft range is clamped into the hard range's open end fine.
@@ -143,7 +147,7 @@ fn paths_and_walk() {
             "key_light.color", "key_light.power", "key_light.enabled",
             "fill_lights[0].color", "fill_lights[0].power", "fill_lights[0].enabled",
             "layers[0]", "layers[1]", "layers[2]",
-            "camera", "samples", "scratch", "implicit_id",
+            "camera", "samples", "scratch", "implicit_id", "glow",
         ]
     );
     let dbg = format!("{:?}", &v as &dyn Reflect);
@@ -168,6 +172,7 @@ fn serialization_roundtrip() {
         samples: 128,
         scratch: 555,
         implicit_id: -1.0,
+        glow: Gradient::new(Color::RED, Color::hex(0x224466)),
     };
 
     let bytes = serial::to_bytes(&v);

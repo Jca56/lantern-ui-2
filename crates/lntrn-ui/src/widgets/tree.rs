@@ -65,9 +65,9 @@ impl Ui<'_> {
         // ---- draw ----
         let style = self.text_style();
         if selected {
-            self.fill_shaded(rect, self.theme.selection);
+            self.fill_shaded(rect, self.theme.shaded(self.theme.selection));
         } else if r.hovered || r.held {
-            let bg = self.theme.hover(self.theme.panel);
+            let bg = self.theme.hover(self.theme.panel.mid());
             self.fill(rect, bg);
         }
         let ink = if selected { self.theme.selection_text } else { self.theme.text };

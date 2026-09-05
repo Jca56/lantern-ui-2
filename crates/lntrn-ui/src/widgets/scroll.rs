@@ -186,8 +186,8 @@ impl Ui<'_> {
         }
         self.draw.rounded_rect(track, bar * 0.5, self.theme.field);
         let thumb = thumb_at(offset);
-        let base = if r.held { self.theme.accent } else if r.hovered { self.theme.hover(self.theme.widget) } else { self.theme.widget };
-        self.draw.rounded_rect_gradient(thumb.shrink(m.border), bar * 0.5, self.theme.top(base), self.theme.bottom(base));
+        let base = if r.held { self.theme.shaded(self.theme.accent) } else if r.hovered { self.theme.hover_g(self.theme.widget) } else { self.theme.widget };
+        self.draw.rounded_rect_gradient(thumb.shrink(m.border), bar * 0.5, base.top, base.bottom);
         self.draw.stroke_rect(thumb, m.border, bar * 0.5, self.theme.border_dark);
         offset
     }

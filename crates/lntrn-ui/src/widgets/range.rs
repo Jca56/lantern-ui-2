@@ -88,7 +88,7 @@ impl Ui<'_> {
         let filled = Rect::new(Vec2::new(x_of(*lo), rect.min.y), Vec2::new(x_of(*hi), rect.max.y));
         if filled.width() >= 1.0 {
             self.draw.push_clip(filled);
-            self.fill_shaded(rect.shrink(m.border), self.theme.accent);
+            self.fill_shaded(rect.shrink(m.border), self.theme.shaded(self.theme.accent));
             self.draw.pop_clip();
         }
         let style = self.text_style();
@@ -96,7 +96,7 @@ impl Ui<'_> {
         self.text_in_rect(label, &style, inner, self.theme.text);
         self.text_right(&format!("{} – {}", format_number(*lo, 3), format_number(*hi, 3)), &style, inner, self.theme.text);
         for (r, held, tid) in [(thumb(*lo), rl.held, lo_id), (thumb(*hi), rh.held, hi_id)] {
-            let base = if held { self.theme.accent } else { self.theme.widget };
+            let base = if held { self.theme.shaded(self.theme.accent) } else { self.theme.widget };
             self.raised(r.shrink(m.border), base, held);
             self.focus_ring(tid, r);
         }
@@ -167,11 +167,11 @@ impl Ui<'_> {
         let filled = Rect::new(Vec2::new(track.min.x, top), track.max);
         if filled.height() >= 1.0 {
             self.draw.push_clip(filled);
-            self.fill_shaded(track.shrink(m.border), self.theme.accent);
+            self.fill_shaded(track.shrink(m.border), self.theme.shaded(self.theme.accent));
             self.draw.pop_clip();
         }
         let thumb = Rect::from_center_size(Vec2::new(cx, top.clamp(track.min.y + m.px(7.0), track.max.y - m.px(7.0))), Vec2::new(track.width() + m.px(10.0), m.px(14.0)));
-        self.raised(thumb, if r.held { self.theme.accent } else { self.theme.widget }, r.held);
+        self.raised(thumb, if r.held { self.theme.shaded(self.theme.accent) } else { self.theme.widget }, r.held);
         self.text_centered(label, &style, label_rect, self.theme.text_dim);
         if !typing {
             self.text_centered(&format_number(*value, 2), &style, value_rect, self.theme.text);

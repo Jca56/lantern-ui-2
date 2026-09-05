@@ -94,7 +94,7 @@ impl Ui<'_> {
                 if r.hovered && !r.held {
                     self.hover_glow(rect, face);
                 }
-                self.raised(rect, face, r.held);
+                self.raised(rect, self.theme.shaded(face), r.held);
                 ink
             }
             None => {
@@ -135,7 +135,7 @@ impl Ui<'_> {
         self.recessed(bx, well);
         if *value {
             let inner = bx.shrink(self.m.px(4.0));
-            self.fill_shaded(inner, self.theme.accent);
+            self.fill_shaded(inner, self.theme.shaded(self.theme.accent));
             // Check mark.
             let w = self.m.px(3.0);
             let (x0, y0) = (inner.min.x, inner.min.y);
@@ -163,11 +163,11 @@ impl Ui<'_> {
         }
         let style = self.text_style();
         if selected {
-            self.fill_shaded(rect, self.theme.selection);
+            self.fill_shaded(rect, self.theme.shaded(self.theme.selection));
             self.text_in_rect_padded(label, &style, rect, self.theme.selection_text);
         } else {
             if r.hovered || r.held {
-                let bg = self.theme.hover(self.theme.panel);
+                let bg = self.theme.hover(self.theme.panel.mid());
                 self.fill(rect, bg);
             }
             self.text_in_rect_padded(label, &style, rect, self.theme.text);
@@ -208,7 +208,7 @@ impl Ui<'_> {
                 if r.hovered {
                     self.hover_glow(tr, self.theme.accent);
                 }
-                self.raised(tr, self.theme.accent, false);
+                self.raised(tr, self.theme.shaded(self.theme.accent), false);
                 self.text_centered(label, &style, tr, self.theme.accent_text);
             } else {
                 self.button_face(tr, &r);
@@ -245,7 +245,7 @@ impl Ui<'_> {
         };
         if filled.width() >= 1.0 {
             self.draw.push_clip(filled);
-            self.fill_shaded(inner, self.theme.accent);
+            self.fill_shaded(inner, self.theme.shaded(self.theme.accent));
             self.draw.pop_clip();
         }
         let text_rect = Rect::new(Vec2::new(rect.min.x + self.m.pad, rect.min.y), Vec2::new(rect.max.x - self.m.pad, rect.max.y));

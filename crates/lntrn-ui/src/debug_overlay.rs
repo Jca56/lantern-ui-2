@@ -51,7 +51,7 @@ impl<H: Host> Shell<H> {
         let w = lines.iter().map(|l| ui.measure(l, &style)).fold(0.0, f64::max) + m.pad * 2.0;
         let h = lh * lines.len() as f64 + m.pad * 2.0;
         let rect = Rect::from_min_size(Vec2::new(window.max.x - m.pad - w, window.min.y + m.header_h + m.pad), Vec2::new(w, h));
-        ui.floating_panel(rect, theme.header.fade(0.92));
+        ui.floating_panel(rect, theme.header.map(|c| c.fade(0.92)));
         ui.draw.stroke_rect(rect, m.border, m.radius, theme.focus);
         for (i, line) in lines.iter().enumerate() {
             ui.text_at(line, &style, Vec2::new(rect.min.x + m.pad, rect.min.y + m.pad + i as f64 * lh), 1.0e6, theme.text);

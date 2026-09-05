@@ -117,7 +117,7 @@ pub(super) fn tables(ui: &mut Ui, g: &mut GalleryState) {
                 for y in y0..y1 {
                     for x in x0..x1 {
                         let r = Rect::from_min_size(view.origin + Vec2::new(x as f64 * cell, y as f64 * cell), Vec2::splat(cell)).shrink(ui.m.gap * 0.5);
-                        let tint = if (x + y) % 2 == 0 { ui.theme.widget } else { ui.theme.field };
+                        let tint = if (x + y) % 2 == 0 { ui.theme.widget.mid() } else { ui.theme.field };
                         ui.fill(r, tint);
                         ui.text_centered(&format!("{},{}", x + 1, y + 1), &style, r, ui.theme.text_dim);
                     }

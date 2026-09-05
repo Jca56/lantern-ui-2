@@ -154,12 +154,12 @@ pub(crate) fn draw<H: Host>(ui: &mut Ui, popup: &mut Popup, window: Rect, palett
                 let style = ui.text_style();
                 let inner = Rect::new(Vec2::new(rect.min.x + m.pad, rect.min.y), Vec2::new(rect.max.x - m.pad, rect.max.y));
                 if i == *selected {
-                    ui.fill_shaded(rect, ui.theme.selection);
+                    ui.fill_shaded(rect, ui.theme.shaded(ui.theme.selection));
                     ui.text_in_rect(label, &style, inner, ui.theme.selection_text);
                     ui.text_right(id, &style, inner, ui.theme.selection_text);
                 } else {
                     if rr.hovered {
-                        let bg = ui.theme.hover(ui.theme.header);
+                        let bg = ui.theme.hover(ui.theme.header.mid());
                         ui.fill(rect, bg);
                     }
                     ui.text_in_rect(label, &style, inner, ui.theme.text);

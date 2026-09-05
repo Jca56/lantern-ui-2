@@ -208,7 +208,21 @@ five (`text_size` 25, `widget_height` 45, `padding` 10, ...). The
 Preferences editor edits it live because the props panel is generated
 from its description. `Theme::metrics(scale)` turns it into physical
 pixels once per frame; `scale` is the window's scale factor times the
-user's UI scale preference.
+user's UI scale preference. Line width comes from `border_width`.
+
+The title bar, area headers, area bodies and raised controls are each a
+`Gradient` (`lntrn_props::Gradient`: two colors, top and bottom, the
+same one twice for flat), one theme row with one swatch that opens the
+picker with a swatch for each end. `gradient` shades everything else
+drawn from a single color (`Theme::shaded(color)` makes it a surface;
+`top`/`bottom`/`highlight`/`shade` are the factor's helpers), and the
+bevel on raised and recessed controls stays one pixel whatever
+`border_width` says; only outlines and separators grow (U028, U029).
+
+Themes have names (`themes.rs`): the presets in code, the user's as
+`name.theme` text files under `~/.config/lantern-ui/themes/`, shared by
+every app; the Preferences editor's Look section picks, saves and
+deletes them (U030).
 
 ## 7. Testing without a window
 

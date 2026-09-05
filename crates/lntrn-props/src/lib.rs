@@ -29,4 +29,4 @@ pub mod walk;
 pub use field::{FieldInfo, FieldInfoBuilder, Flags, Range, Subtype, flags};
 pub use info::{TypeInfo, TypeInfoBuilder};
 pub use reflect::{Prop, PropError, Reflect, ReflectList, ReflectStatic};
-pub use value::{EnumInfo, Kind, Value, VariantInfo};
+pub use value::{EnumInfo, Gradient, Kind, Value, VariantInfo};

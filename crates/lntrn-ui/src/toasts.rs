@@ -58,7 +58,7 @@ impl<H: Host> Shell<H> {
             });
             let w = (ui.measure(&t.text, &style) + m.pad * 2.0).min(max_w);
             let rect = Rect::from_min_size(Vec2::new(window.max.x - m.pad - w, y - m.widget_h), Vec2::new(w, m.widget_h));
-            ui.floating_panel(rect, theme.header.fade(alpha));
+            ui.floating_panel(rect, theme.header.map(|c| c.fade(alpha)));
             ui.draw.stroke_rect(rect, m.border, m.radius, theme.accent.fade(alpha));
             let inner = Rect::new(Vec2::new(rect.min.x + m.pad, rect.min.y), Vec2::new(rect.max.x - m.pad, rect.max.y));
             ui.text_in_rect(&t.text, &style, inner, theme.text.fade(alpha));

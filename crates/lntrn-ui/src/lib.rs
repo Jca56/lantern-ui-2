@@ -43,6 +43,7 @@ pub mod shell;
 pub mod state;
 pub mod testing;
 pub mod theme;
+pub mod themes;
 pub mod titlebar;
 pub mod toasts;
 pub mod ui;

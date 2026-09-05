@@ -66,7 +66,7 @@ impl Ui<'_> {
         let filled = Rect::new(rect.min, Vec2::new(rect.min.x + rect.width() * t, rect.max.y));
         if filled.width() >= 1.0 {
             self.draw.push_clip(filled);
-            self.fill_shaded(rect.shrink(self.m.border), self.theme.accent);
+            self.fill_shaded(rect.shrink(self.m.border), self.theme.shaded(self.theme.accent));
             self.draw.pop_clip();
         }
         let style = self.text_style();

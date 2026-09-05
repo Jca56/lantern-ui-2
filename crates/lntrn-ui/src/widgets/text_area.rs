@@ -308,8 +308,8 @@ impl Ui<'_> {
             }
             self.draw.rounded_rect(track, bar_w * 0.5, self.theme.shade(self.theme.field));
             let thumb = Rect::from_min_size(Vec2::new(track.min.x, track.min.y + travel * (scroll / max_scroll)), Vec2::new(bar_w, thumb_h));
-            let base = if tr.held { self.theme.accent } else if tr.hovered { self.theme.hover(self.theme.widget) } else { self.theme.widget };
-            self.draw.rounded_rect_gradient(thumb.shrink(self.m.border), bar_w * 0.5, self.theme.top(base), self.theme.bottom(base));
+            let base = if tr.held { self.theme.shaded(self.theme.accent) } else if tr.hovered { self.theme.hover_g(self.theme.widget) } else { self.theme.widget };
+            self.draw.rounded_rect_gradient(thumb.shrink(self.m.border), bar_w * 0.5, base.top, base.bottom);
         }
         let mem = self.state.scroll(id);
         mem.offset.y = scroll;

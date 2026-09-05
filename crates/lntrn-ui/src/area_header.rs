@@ -64,7 +64,7 @@ pub(crate) fn area_header<H: Host>(ui: &mut Ui, host: &mut H, cx: &mut AreaCx<H:
                     ui.state.cursor_icon = CursorIcon::Pointer;
                 }
                 if i == h.current {
-                    ui.raised(rect, ui.theme.accent, false);
+                    ui.raised(rect, ui.theme.shaded(ui.theme.accent), false);
                     ui.text_centered(label, &style, rect, ui.theme.accent_text);
                 } else {
                     ui.button_face(rect, &r);

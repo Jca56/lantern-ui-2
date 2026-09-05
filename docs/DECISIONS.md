@@ -461,3 +461,52 @@ type. lntrn-code's Open Folder had to pretend with a `.` name.
 **Rejected:** A `folder` flag on `PathDialog` (every host that builds one
 would have to change); a separate widget (the browser already lists
 folders and climbs).
+
+## U028 — Surfaces are gradients, and the title bar is its own
+**Status:** Accepted (Alva, 2026-09-04)
+**Decision:** `lntrn-props` gains a `Gradient` leaf value (two colors,
+top and bottom; serial tag 13). The theme's `title`, `header`, `panel`
+and `widget` are gradients: one row each in the panel, one swatch that
+shows the blend and opens the picker, which then has a swatch for each
+end (click one to edit it with the square, the hue bar or the hex
+field). The same color twice is a flat surface. The picker is bigger
+and has no alpha bar: the window is opaque, so alpha meant nothing.
+Painters (`raised`, `fill_shaded`, `floating_panel`, the shell's
+headers and bodies, the table header, the title bar) take a `Gradient`;
+anything shaded from a single color goes through `Theme::shaded`. The
+bevel stays one pixel (`Metrics::bevel`) whatever the border width.
+**Why:** The `gradient` factor makes every surface lighter-above,
+darker-below from one color. Alva wanted to pick both colors of each
+surface, in one place, and a title bar that need not match the headers.
+Two earlier cuts (separate Top and Bottom color rows; a base color plus
+an optional override pair) read as many unrelated settings and a split
+alpha preview read as two colors per swatch.
+**Rejected:** Keeping `header` a color with a gradient beside it (two
+rows for one thing); an alpha bar (only worth having once the window
+can be translucent, which is a separate decision).
+
+## U029 — Border width is a theme value
+**Status:** Accepted (Alva, 2026-09-04)
+**Decision:** `Theme::border_width` (0–6 logical pixels, default 1)
+feeds `Metrics::border`, which every outline, bevel, etched line and
+separator already draws with. Zero draws no lines at all.
+**Why:** The one-pixel line was hard-coded in `metrics()`; on a 4K
+panel at scale 1.0 it is a hairline.
+
+## U030 — Named themes, saved as text
+**Status:** Accepted (Alva, 2026-09-04)
+**Decision:** A theme has a name. The presets (Dark, Ember, Nightfall,
+Moss, Light, High Contrast) are code; the user's are `name.theme` files
+in `~/.config/lantern-ui/themes/`, one `field = value` line per leaf
+(`#RRGGBB` colors, two of them for a gradient), shared by every Lantern
+UI app. Preferences → Look starts with the chooser: a dropdown of all
+of them, *Save as* with a name (Enter or the button), *Delete* for a
+saved one. `Prefs::theme_name` remembers which the look came from; a
+tweak shows as "(modified)" until saved. A look that matches nothing
+when the chooser first draws is saved as *Custom* so it is not lost.
+**Why:** Tweaking colors is endless; a saved point to come back to, and
+presets to start from, are what makes it stop. Text files so a theme
+can be read, mailed and edited by hand.
+**Rejected:** Themes in the binary prefs file (one look per app, not
+shareable, not readable); a themes dir per app (the point is one look
+across the desktop).

@@ -51,7 +51,7 @@ impl Ui<'_> {
                         }
                         let style = ui.text_style();
                         if is_waiting {
-                            ui.raised(rect, ui.theme.accent, false);
+                            ui.raised(rect, ui.theme.shaded(ui.theme.accent), false);
                             ui.text_centered("Press a key…", &style, rect, ui.theme.accent_text);
                         } else {
                             ui.button_face(rect, &r);

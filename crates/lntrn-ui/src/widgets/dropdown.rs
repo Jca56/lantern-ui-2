@@ -165,7 +165,7 @@ impl Ui<'_> {
             }
             let is_sel = selected == Some(i);
             if r.hovered || r.held {
-                let bg = self.theme.hover(self.theme.header);
+                let bg = self.theme.hover(self.theme.header.mid());
                 self.fill(ir.shrink(self.m.border), bg);
             }
             let inner = Rect::new(Vec2::new(ir.min.x + self.m.pad, ir.min.y), Vec2::new(ir.max.x - self.m.pad, ir.max.y));

@@ -243,12 +243,23 @@ fn theme_presets_apply_from_preferences() {
     let f = |ui: &mut Ui| {
         prefs::draw(ui, &mut p.borrow_mut());
     };
-    h.click_on(WidgetId::ROOT.with("prefs").with("Light"), f);
+    h.frame(f);
+    assert_eq!(p.borrow().theme_name, "Dark", "the default look gets its preset's name");
+    // The chooser is a dropdown: presets first, in order.
+    let dd = WidgetId::ROOT.with("prefs").with("theme");
+    let pick = |h: &mut Harness, k: usize| {
+        h.advance(1.0);
+        h.click_on(dd, f);
+        let item = h.rect_of(dd.with("item").with_index(k)).expect("the list is open");
+        h.advance(1.0);
+        h.click_at(item.center(), f);
+    };
+    pick(&mut h, 4);
     assert_eq!(p.borrow().theme.panel, Theme::light().panel);
-    h.advance(1.0);
-    h.click_on(WidgetId::ROOT.with("prefs").with("High Contrast"), f);
+    assert_eq!(p.borrow().theme_name, "Light");
+    pick(&mut h, 5);
     assert_eq!(p.borrow().theme.text_size, Theme::high_contrast().text_size);
-    h.advance(1.0);
-    h.click_on(WidgetId::ROOT.with("prefs").with("Dark"), f);
+    pick(&mut h, 0);
     assert_eq!(p.borrow().theme.panel, Theme::default().panel);
+    assert_eq!(p.borrow().theme_name, "Dark");
 }

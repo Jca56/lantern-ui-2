@@ -125,10 +125,12 @@ impl<H: Host> Shell<H> {
         let mut cmd = None;
         let mut open_menu = None;
         let mut hovered_menu = None;
-        let bg = if ws.focused { theme.header } else { theme.header.lerp(theme.bg, 0.5) };
+        // An unfocused window's bar sinks halfway into the background.
+        let g = if ws.focused { theme.title } else { theme.title.map(|c| c.lerp(theme.bg, 0.5)) };
+        let bg = g.mid();
         draw.set_layer(0);
         draw.push_clip_absolute(bar);
-        draw.rect_gradient(bar, theme.top(bg), theme.bottom(bg));
+        draw.rect_gradient(bar, g.top, g.bottom);
         draw.hline(bar.min.x, bar.max.x, bar.min.y, m.border, theme.highlight(bg));
         draw.hline(bar.min.x, bar.max.x, bar.max.y - m.border, m.border, theme.border_dark);
         draw.pop_clip();

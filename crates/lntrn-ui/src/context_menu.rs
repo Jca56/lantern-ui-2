@@ -246,7 +246,7 @@ pub(crate) fn draw<H: Host>(ui: &mut Ui, menu: &mut ContextMenu, window: Rect, h
                     let r = ui.interact(ui.id("sub"), rect, Sense::CLICK);
                     let open = menu.open_sub == Some(i);
                     if r.hovered || open {
-                        let bg = if open { ui.theme.hover(ui.theme.header) } else { ui.theme.hover(ui.theme.panel) };
+                        let bg = if open { ui.theme.hover(ui.theme.header.mid()) } else { ui.theme.hover(ui.theme.panel.mid()) };
                         ui.fill(rect, bg);
                     }
                     if r.hovered {

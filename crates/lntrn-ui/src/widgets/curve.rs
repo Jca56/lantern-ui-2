@@ -91,7 +91,7 @@ impl Ui<'_> {
             self.draw.polyline(&pts, m.px(3.0), self.theme.accent, false);
         }
         for (i, p) in pts.iter().enumerate() {
-            let face = if selected == Some(i) { self.theme.selection } else { self.theme.widget };
+            let face = if selected == Some(i) { self.theme.selection } else { self.theme.widget.mid() };
             self.draw.circle(*p, handle * 0.5 + m.border, self.theme.border_dark);
             self.draw.circle(*p, handle * 0.5, face);
         }

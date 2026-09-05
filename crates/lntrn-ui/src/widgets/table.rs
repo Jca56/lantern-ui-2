@@ -176,11 +176,11 @@ impl Table<'_, '_> {
         // Hover first, without the press, so the background goes under the cells.
         let hover = ui.interact(id, rect, Sense::NONE);
         if selected {
-            ui.fill_shaded(rect, ui.theme.selection);
+            ui.fill_shaded(rect, ui.theme.shaded(ui.theme.selection));
         } else if hover.hovered {
-            ui.fill(rect, ui.theme.hover(ui.theme.panel));
+            ui.fill(rect, ui.theme.hover(ui.theme.panel.mid()));
         } else if i % 2 == 1 {
-            ui.draw.rect(rect, ui.theme.bottom(ui.theme.panel));
+            ui.draw.rect(rect, ui.theme.panel.bottom);
         }
         if hover.hovered {
             self.resp.hovered = Some(i);
@@ -291,7 +291,7 @@ impl Ui<'_> {
         // ---- header: grips first (they win the press), then the labels --------
         let clip = header.intersection(&self.clip());
         self.draw.push_clip(clip);
-        self.draw.rect_gradient(header, self.theme.top(self.theme.header), self.theme.bottom(self.theme.header));
+        self.draw.rect_gradient(header, self.theme.header.top, self.theme.header.bottom);
         self.draw.hline(header.min.x, header.max.x, header.max.y - m.border, m.border, self.theme.border_dark);
         let cols = cols_at(header.min.x - view.offset.x);
         let style = self.text_style();
@@ -316,7 +316,7 @@ impl Ui<'_> {
             let r = self.interact(id.with("col").with_index(c), cell, if col.sortable { Sense::CLICK } else { Sense::NONE });
             if col.sortable && r.hovered {
                 self.state.cursor_icon = CursorIcon::Pointer;
-                self.fill(cell, self.theme.hover(self.theme.header));
+                self.fill(cell, self.theme.hover(self.theme.header.mid()));
             }
             let sorted = sort.filter(|(sc, _)| *sc == c);
             let arrow_w = if sorted.is_some() { m.widget_h * 0.5 } else { 0.0 };

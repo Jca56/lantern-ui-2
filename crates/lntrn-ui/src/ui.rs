@@ -409,10 +409,10 @@ impl<'a> Ui<'a> {
         DropZone { hovering, files }
     }
 
-    /// Base color for a raised control in its current role (pressed is
+    /// The face of a raised control in its current role (pressed is
     /// handled by [`Self::raised`]).
-    pub fn widget_color(&self, r: &Response) -> Color {
-        if r.hovered && !r.held { self.theme.hover(self.theme.widget) } else { self.theme.widget }
+    pub fn widget_color(&self, r: &Response) -> lntrn_props::Gradient {
+        if r.hovered && !r.held { self.theme.hover_g(self.theme.widget) } else { self.theme.widget }
     }
 
     /// Draw a button face for `r` over `rect`, glowing while hovered.

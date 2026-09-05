@@ -103,10 +103,10 @@ impl Ui<'_> {
             self.draw.arc(c, track_r, A0, A0 + SWEEP * t, track_w, theme.accent);
         }
         let cap_r = radius - track_w - self.m.px(4.0);
-        let base = if r.held { theme.shade(theme.widget) } else if r.hovered { theme.hover(theme.widget) } else { theme.widget };
+        let base = if r.held { theme.widget.map(|c| theme.shade(c)) } else if r.hovered { theme.hover_g(theme.widget) } else { theme.widget };
         self.draw.circle(c, cap_r + self.m.border, theme.border_dark);
-        self.draw.circle_gradient(c, cap_r, theme.top(base), theme.bottom(base));
-        self.draw.ring(c, cap_r, self.m.border, theme.highlight(base).fade(0.6));
+        self.draw.circle_gradient(c, cap_r, base.top, base.bottom);
+        self.draw.ring(c, cap_r, self.m.border, theme.highlight(base.mid()).fade(0.6));
         let angle = A0 + SWEEP * t;
         let dir = Vec2::from_angle(angle);
         self.draw.line(c + dir * (cap_r * 0.35), c + dir * (cap_r * 0.85), self.m.px(4.0), if t > 0.0 { theme.accent } else { theme.text });

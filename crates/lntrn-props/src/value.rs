@@ -7,6 +7,44 @@ use lntrn_math::{Color, Vec2, Vec3, Vec4};
 
 use crate::info::TypeInfo;
 
+/// Two colors, top and bottom, for a surface shaded between them. The
+/// same color twice is a flat surface.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Gradient {
+    pub top: Color,
+    pub bottom: Color,
+}
+
+impl Gradient {
+    pub const fn new(top: Color, bottom: Color) -> Self {
+        Self { top, bottom }
+    }
+
+    /// One color, top and bottom.
+    pub const fn flat(c: Color) -> Self {
+        Self { top: c, bottom: c }
+    }
+
+    /// `base` lighter by `factor` at the top and darker at the bottom.
+    pub fn shaded(base: Color, factor: f64) -> Self {
+        Self { top: base.scale_rgb(1.0 + factor), bottom: base.scale_rgb(1.0 - factor) }
+    }
+
+    /// The color halfway down.
+    pub fn mid(&self) -> Color {
+        self.top.lerp(self.bottom, 0.5)
+    }
+
+    /// Both ends through `f`.
+    pub fn map(&self, f: impl Fn(Color) -> Color) -> Self {
+        Self { top: f(self.top), bottom: f(self.bottom) }
+    }
+
+    pub fn is_flat(&self) -> bool {
+        self.top == self.bottom
+    }
+}
+
 /// A dynamically typed property value. Struct and list fields have no
 /// `Value`; they are reached through `Reflect::get_struct` / `get_list`.
 #[derive(Clone, Debug, PartialEq)]
@@ -19,6 +57,7 @@ pub enum Value {
     Vec3(Vec3),
     Vec4(Vec4),
     Color(Color),
+    Gradient(Gradient),
     Str(String),
     /// The discriminant value of an enum variant.
     Enum(i64),
@@ -39,6 +78,7 @@ impl Value {
             Value::Vec3(_) => Kind::Vec3,
             Value::Vec4(_) => Kind::Vec4,
             Value::Color(_) => Kind::Color,
+            Value::Gradient(_) => Kind::Gradient,
             Value::Str(_) => Kind::Str,
             Value::Id(_) => Kind::Id,
         })
@@ -76,6 +116,7 @@ impl fmt::Display for Value {
             Value::Vec3(v) => write!(f, "({}, {}, {})", v.x, v.y, v.z),
             Value::Vec4(v) => write!(f, "({}, {}, {}, {})", v.x, v.y, v.z, v.w),
             Value::Color(c) => write!(f, "rgba({}, {}, {}, {})", c.r, c.g, c.b, c.a),
+            Value::Gradient(g) => write!(f, "gradient({} → {})", Value::Color(g.top), Value::Color(g.bottom)),
             Value::Str(s) => write!(f, "{s:?}"),
             Value::Enum(v) => write!(f, "enum:{v}"),
             Value::Id(id) => write!(f, "{id}"),
@@ -117,6 +158,7 @@ pub enum Kind {
     Vec3,
     Vec4,
     Color,
+    Gradient,
     Str,
     Id,
     Enum(&'static EnumInfo),
@@ -139,6 +181,7 @@ impl Kind {
             | (Kind::Vec3, Value::Vec3(_))
             | (Kind::Vec4, Value::Vec4(_))
             | (Kind::Color, Value::Color(_))
+            | (Kind::Gradient, Value::Gradient(_))
             | (Kind::Str, Value::Str(_))
             | (Kind::Id, Value::Id(_)) => true,
             (Kind::Enum(e), Value::Enum(x)) => e.variant(*x).is_some(),
@@ -155,6 +198,7 @@ impl Kind {
             Kind::Vec3 => "vec3".into(),
             Kind::Vec4 => "vec4".into(),
             Kind::Color => "color".into(),
+            Kind::Gradient => "gradient".into(),
             Kind::Str => "string".into(),
             Kind::Id => "id".into(),
             Kind::Enum(e) => format!("enum {}", e.name),
@@ -204,5 +248,13 @@ mod tests {
         assert_eq!(Value::Str("a".into()).kind(), Some(Kind::Str));
         assert_eq!(Value::Enum(1).kind(), None);
         assert_eq!(format!("{}", Value::Vec2(Vec2::new(1.0, 2.0))), "(1, 2)");
+        let g = Gradient::new(Color::rgb(1.0, 0.0, 0.0), Color::rgb(0.0, 0.0, 1.0));
+        assert!(!g.is_flat() && Gradient::flat(Color::WHITE).is_flat());
+        assert_eq!(g.mid(), Color::rgb(0.5, 0.0, 0.5));
+        assert_eq!(g.map(|c| c.scale_rgb(0.5)).top, Color::rgb(0.5, 0.0, 0.0));
+        let s = Gradient::shaded(Color::rgb(0.5, 0.5, 0.5), 0.1);
+        assert!(s.top.r > 0.5 && s.bottom.r < 0.5);
+        assert!(Kind::Gradient.accepts(&Value::Gradient(g)) && !Kind::Color.accepts(&Value::Gradient(g)));
+        assert_eq!(Value::Gradient(g).kind(), Some(Kind::Gradient));
     }
 }

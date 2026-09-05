@@ -19,7 +19,7 @@ use lntrn_core::Id;
 use lntrn_math::{Color, Vec2, Vec3, Vec4};
 
 use crate::reflect::{Reflect, ReflectList};
-use crate::value::{Kind, Value};
+use crate::value::{Gradient, Kind, Value};
 
 const T_BOOL: u8 = 1;
 const T_I64: u8 = 2;
@@ -33,6 +33,7 @@ const T_ENUM: u8 = 9;
 const T_ID: u8 = 10;
 const T_STRUCT: u8 = 11;
 const T_LIST: u8 = 12;
+const T_GRADIENT: u8 = 13;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SerialError {
@@ -62,6 +63,7 @@ fn tag_for(kind: &Kind) -> u8 {
         Kind::Vec3 => T_VEC3,
         Kind::Vec4 => T_VEC4,
         Kind::Color => T_COLOR,
+        Kind::Gradient => T_GRADIENT,
         Kind::Str => T_STR,
         Kind::Enum(_) => T_ENUM,
         Kind::Id => T_ID,
@@ -128,6 +130,14 @@ impl Writer {
                 self.f64(c.g);
                 self.f64(c.b);
                 self.f64(c.a);
+            }
+            Value::Gradient(g) => {
+                for c in [g.top, g.bottom] {
+                    self.f64(c.r);
+                    self.f64(c.g);
+                    self.f64(c.b);
+                    self.f64(c.a);
+                }
             }
             Value::Str(s) => {
                 self.u32(s.len() as u32);
@@ -234,6 +244,11 @@ impl<'a> Reader<'a> {
             T_VEC3 => Value::Vec3(Vec3::new(self.f64()?, self.f64()?, self.f64()?)),
             T_VEC4 => Value::Vec4(Vec4::new(self.f64()?, self.f64()?, self.f64()?, self.f64()?)),
             T_COLOR => Value::Color(Color::rgba(self.f64()?, self.f64()?, self.f64()?, self.f64()?)),
+            T_GRADIENT => {
+                let top = Color::rgba(self.f64()?, self.f64()?, self.f64()?, self.f64()?);
+                let bottom = Color::rgba(self.f64()?, self.f64()?, self.f64()?, self.f64()?);
+                Value::Gradient(Gradient::new(top, bottom))
+            }
             T_STR => {
                 let len = self.u32()? as usize;
                 let bytes = self.take(len)?;

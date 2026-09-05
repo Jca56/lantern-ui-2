@@ -2,6 +2,7 @@
 //! shapes every widget is built from (raised, recessed, floating panels).
 
 use lntrn_math::{Color, Rect, Vec2};
+use lntrn_props::Gradient;
 use lntrn_text::{TextMetrics, TextStyle};
 
 use crate::ui::Ui;
@@ -74,37 +75,40 @@ impl Ui<'_> {
         self.draw.rounded_rect(rect, self.m.radius, color);
     }
 
-    /// Rounded rect shaded from the theme's top to bottom of `base`.
-    pub fn fill_shaded(&mut self, rect: Rect, base: Color) {
-        let (t, b) = (self.theme.top(base), self.theme.bottom(base));
-        self.draw.rounded_rect_gradient(rect, self.m.radius, t, b);
+    /// Rounded rect filled with a gradient, top to bottom.
+    pub fn fill_shaded(&mut self, rect: Rect, g: Gradient) {
+        self.draw.rounded_rect_gradient(rect, self.m.radius, g.top, g.bottom);
     }
 
     /// One-pixel bevel: a bright stroke along the top half and a dark stroke
-    /// along the bottom half of the rounded rect, so edges follow the corners.
+    /// along the bottom half of the rounded rect, so edges follow the
+    /// corners. Inside the outline, whatever width that has.
     fn bevel(&mut self, rect: Rect, radius: f64, top: Color, bottom: Color) {
-        let inner = rect.shrink(self.m.border);
+        let (w, edge) = (self.m.bevel, self.m.border);
+        let inner = rect.shrink(edge);
+        let r = (radius - edge).max(0.0);
         let mid = rect.center().y;
         let clip = self.clip;
         self.draw.push_clip(Rect::new(rect.min, Vec2::new(rect.max.x, mid)).intersection(&clip));
-        self.draw.stroke_rect(inner, self.m.border, (radius - self.m.border).max(0.0), top);
+        self.draw.stroke_rect(inner, w, r, top);
         self.draw.pop_clip();
         self.draw.push_clip(Rect::new(Vec2::new(rect.min.x, mid), rect.max).intersection(&clip));
-        self.draw.stroke_rect(inner, self.m.border, (radius - self.m.border).max(0.0), bottom);
+        self.draw.stroke_rect(inner, w, r, bottom);
         self.draw.pop_clip();
     }
 
-    /// A raised control: shaded fill, light top edge, dark bottom edge, dark
-    /// outline. `pressed` sinks it (darker, shading inverted).
-    pub fn raised(&mut self, rect: Rect, base: Color, pressed: bool) {
+    /// A raised control: a gradient fill, light top edge, dark bottom
+    /// edge, dark outline. `pressed` sinks it (darker, shading inverted).
+    pub fn raised(&mut self, rect: Rect, g: Gradient, pressed: bool) {
         let r = self.m.radius;
         let t = self.theme;
+        let base = g.mid();
         if pressed {
-            let base = base.scale_rgb(0.85);
-            self.draw.rounded_rect_gradient(rect, r, t.bottom(base), t.top(base));
-            self.bevel(rect, r, t.shade(base), t.top(base));
+            let sunk = base.scale_rgb(0.85);
+            self.draw.rounded_rect_gradient(rect, r, g.bottom.scale_rgb(0.85), g.top.scale_rgb(0.85));
+            self.bevel(rect, r, t.shade(sunk), t.top(sunk));
         } else {
-            self.draw.rounded_rect_gradient(rect, r, t.top(base), t.bottom(base));
+            self.draw.rounded_rect_gradient(rect, r, g.top, g.bottom);
             self.bevel(rect, r, t.highlight(base), t.shade(base));
         }
         self.draw.stroke_rect(rect, self.m.border, r, t.border_dark);
@@ -120,13 +124,14 @@ impl Ui<'_> {
         self.draw.stroke_rect(rect, self.m.border, r, t.border_dark);
     }
 
-    /// A floating panel (menus, popups): shaded fill, light top edge, dark
-    /// outline, soft shadow underneath.
-    pub fn floating_panel(&mut self, rect: Rect, base: Color) {
+    /// A floating panel (menus, popups): a gradient fill, light top edge,
+    /// dark outline, soft shadow underneath.
+    pub fn floating_panel(&mut self, rect: Rect, g: Gradient) {
         let r = self.m.radius;
         let t = self.theme;
+        let base = g.mid();
         self.draw.shadow(rect.translate(Vec2::new(0.0, self.m.px(4.0))), r, self.m.px(12.0), Color::BLACK.fade(0.55));
-        self.draw.rounded_rect_gradient(rect, r, t.top(base), t.bottom(base));
+        self.draw.rounded_rect_gradient(rect, r, g.top, g.bottom);
         self.bevel(rect, r, t.highlight(base), t.shade(base));
         self.draw.stroke_rect(rect, self.m.border, r, t.border_dark);
     }

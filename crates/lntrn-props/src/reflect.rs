@@ -8,7 +8,7 @@ use lntrn_core::Id;
 use lntrn_math::{Color, Vec2, Vec3, Vec4};
 
 use crate::info::TypeInfo;
-use crate::value::{Kind, Value};
+use crate::value::{Gradient, Kind, Value};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum PropError {
@@ -168,6 +168,7 @@ leaf_prop!(Vec2, Vec2, |v| Value::Vec2(*v), |v| if let Value::Vec2(x) = v { Some
 leaf_prop!(Vec3, Vec3, |v| Value::Vec3(*v), |v| if let Value::Vec3(x) = v { Some(*x) } else { None });
 leaf_prop!(Vec4, Vec4, |v| Value::Vec4(*v), |v| if let Value::Vec4(x) = v { Some(*x) } else { None });
 leaf_prop!(Color, Color, |v| Value::Color(*v), |v| if let Value::Color(x) = v { Some(*x) } else { None });
+leaf_prop!(Gradient, Gradient, |v| Value::Gradient(*v), |v| if let Value::Gradient(x) = v { Some(*x) } else { None });
 leaf_prop!(Id, Id, |v| Value::Id(*v), |v| if let Value::Id(x) = v { Some(*x) } else { None });
 
 macro_rules! int_prop {

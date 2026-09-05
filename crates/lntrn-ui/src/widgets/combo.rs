@@ -27,7 +27,7 @@ impl Ui<'_> {
         if b.hovered {
             self.state.cursor_icon = CursorIcon::Pointer;
         }
-        let base = if open_now { self.theme.shade(self.theme.widget) } else { self.widget_color(&b) };
+        let base = if open_now { self.theme.widget.map(|c| self.theme.shade(c)) } else { self.widget_color(&b) };
         self.raised(button, base, b.held || open_now);
         self.draw_chevron(Rect::from_center_size(button.center(), Vec2::new(m.pad * 2.0 + m.px(12.0), button.height())));
         if b.clicked || open_key {
