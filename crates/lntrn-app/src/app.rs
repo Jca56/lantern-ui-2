@@ -163,11 +163,13 @@ struct App<H: AppHost> {
     /// still hold the Wayland connection the GPU's GL backend sits on; the
     /// windows then let go of the GPU before the connection (see `Win`).
     shared: Option<GpuShared>,
+    /// The host, before `wins` for the same reason: any GPU objects it
+    /// owns (pipelines, buffers) must go before the windows do.
+    host: H,
     /// The windows, the main one first.
     wins: Vec<Win<H>>,
     text: TextEngine,
     draw: DrawList,
-    host: H,
     /// The main window's shell, until the window exists.
     shell: Option<Shell<H>>,
     next_id: u32,
