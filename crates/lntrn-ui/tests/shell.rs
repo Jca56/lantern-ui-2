@@ -319,3 +319,43 @@ fn closing_asks_the_host_first() {
     assert_eq!(out.window_command, Some(WindowCommand::Close));
     assert_eq!(host.closes_asked.last(), Some(&false), "not the main window");
 }
+
+/// A host whose world view goes without a header (U031).
+struct Bare;
+
+impl Host for Bare {
+    type Editor = u8;
+    type AreaState = ();
+    fn editors(&self) -> &[u8] {
+        &[0, 1]
+    }
+    fn editor_label(&self, e: u8) -> &str {
+        if e == 0 { "Panel" } else { "World" }
+    }
+    fn title(&self) -> String {
+        "Bare".into()
+    }
+    fn shows_header(&self, e: u8) -> bool {
+        e == 0
+    }
+    fn draw_body(&mut self, _: u8, ui: &mut Ui, _: &mut AreaCx<()>) -> bool {
+        ui.label("body");
+        false
+    }
+    fn run(&mut self, _: &Action, _: &mut HostCx) {}
+}
+
+#[test]
+fn an_editor_without_a_header_fills_its_area() {
+    let mut h = Harness::new(1000.0, 700.0);
+    let mut shell: Shell<Bare> = Shell::new(0);
+    let world = shell.screen.split(0, Axis::Horizontal, 0.2, 1).unwrap();
+    let mut host = Bare;
+    h.shell_frame(&mut shell, &mut host);
+    let panel = *shell.screen.layout_of(0).unwrap();
+    let w = *shell.screen.layout_of(world).unwrap();
+    assert!(panel.header.height() > 0.0, "the panel keeps its header");
+    assert_eq!(w.header.height(), 0.0, "the world has none");
+    assert_eq!(w.body, w.rect, "so its body is the whole area");
+    assert_eq!(w.body.min.y, panel.rect.min.y, "both start right under the title bar");
+}

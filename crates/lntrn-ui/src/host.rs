@@ -390,6 +390,14 @@ pub trait Host {
         let _ = editor;
         false
     }
+    /// Does an area showing this editor get a header (the editor dropdown,
+    /// tabs, the `⋮` menu)? `false` gives the body the whole area, for a
+    /// fixed layout the user does not rearrange (U031). Keys and the
+    /// palette still reach `shell.*` actions there.
+    fn shows_header(&self, editor: Self::Editor) -> bool {
+        let _ = editor;
+        true
+    }
     /// Controls in an area's header, after the editor dropdown.
     fn draw_header(&mut self, editor: Self::Editor, ui: &mut Ui, cx: &mut AreaCx<Self::AreaState>) {
         let _ = (editor, ui, cx);

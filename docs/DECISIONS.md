@@ -510,3 +510,18 @@ can be read, mailed and edited by hand.
 **Rejected:** Themes in the binary prefs file (one look per app, not
 shareable, not readable); a themes dir per app (the point is one look
 across the desktop).
+
+## U031 — An editor may go without a header
+**Status:** Accepted (Alva, 2026-09-05)
+**Decision:** `Host::shows_header(editor)`, `true` by default. An area
+whose editor answers `false` draws no header — no editor dropdown, no
+tabs, no `⋮` menu, no grip — and its body is the whole area
+(`Screen::layout_with` takes the rule per area; `layout` keeps every
+header). Keys and the palette still reach `shell.*` actions there, and
+the separators still drag.
+**Why:** Aspera Vita is a fixed panel beside a world view; a header on
+each is 45 logical pixels of controls for rearranging a layout nobody
+rearranges.
+**Rejected:** A shell-wide switch (a host may want a header on the
+panel and none on the view); a zero `header_height` in the theme (the
+theme is the user's, the layout is the app's).

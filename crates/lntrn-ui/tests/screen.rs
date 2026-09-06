@@ -123,3 +123,19 @@ fn tabs_stack_in_an_area() {
     assert_eq!(s.target(K::Gallery), None, "target looks at showing tabs only");
     assert_eq!(s.target(K::Empty), Some(0));
 }
+
+#[test]
+fn headerless_area_gives_the_body_the_whole_area() {
+    let mut s: Screen<K> = Screen::new(K::Empty);
+    let right = s.split(0, Axis::Horizontal, 0.2, K::Gallery).unwrap();
+    s.layout_with(win(), 45.0, 10.0, |a| a != right);
+    let l0 = *s.layout_of(0).unwrap();
+    let l1 = *s.layout_of(right).unwrap();
+    assert_eq!(l0.header.height(), 45.0, "the left area keeps its header");
+    assert_eq!(l1.header.height(), 0.0, "the right one has none");
+    assert_eq!(l1.body, l1.rect, "so its body is the whole area");
+    // Maximized, the same rule applies.
+    s.toggle_maximize(right);
+    s.layout_with(win(), 45.0, 10.0, |a| a != right);
+    assert_eq!(s.layout_of(right).unwrap().body, win());
+}

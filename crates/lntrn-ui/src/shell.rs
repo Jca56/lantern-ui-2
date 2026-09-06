@@ -226,7 +226,11 @@ impl<H: Host> Shell<H> {
             self.open_menu(host, &name, at);
         }
         let areas_window = tb.rest;
-        self.screen.layout(areas_window, m.header_h, m.sep);
+        // Areas whose editor goes without a header (U031) give the body the
+        // whole area.
+        let headerless: Vec<AreaId> = self.screen.area_ids().filter(|&a| self.screen.area(a).is_some_and(|ar| !host.shows_header(ar.editor()))).collect();
+        let shows_header = |a: AreaId| !headerless.contains(&a);
+        self.screen.layout_with(areas_window, m.header_h, m.sep, shows_header);
 
         // ---- separators -------------------------------------------------
         let st = &mut self.state;
@@ -236,7 +240,7 @@ impl<H: Host> Shell<H> {
         if let Some(idx) = self.drag_sep {
             if st.down {
                 self.screen.drag_separator(idx, st.pointer, Screen::<H::Editor, H::AreaState>::min_area_px(m.header_h));
-                self.screen.layout(areas_window, m.header_h, m.sep);
+                self.screen.layout_with(areas_window, m.header_h, m.sep, shows_header);
             }
         } else if st.pressed
             && !st.press_claimed
@@ -310,30 +314,35 @@ impl<H: Host> Shell<H> {
             let tab_labels: Vec<String> = area.tabs.iter().map(|t| host.editor_label(t.editor).to_owned()).collect();
             let base = WidgetId::ROOT.with_u64(l.area as u64);
 
+            let with_header = host.shows_header(kind);
             draw.set_layer(0);
             draw.push_clip_absolute(l.rect);
-            draw.rect_gradient(l.header, theme.header.top, theme.header.bottom);
-            draw.hline(l.header.min.x, l.header.max.x, l.header.min.y, m.border, theme.highlight(theme.header.mid()));
-            draw.hline(l.header.min.x, l.header.max.x, l.header.max.y - m.border, m.border, theme.border_dark);
+            if with_header {
+                draw.rect_gradient(l.header, theme.header.top, theme.header.bottom);
+                draw.hline(l.header.min.x, l.header.max.x, l.header.min.y, m.border, theme.highlight(theme.header.mid()));
+                draw.hline(l.header.min.x, l.header.max.x, l.header.max.y - m.border, m.border, theme.border_dark);
+            }
             if !host.paints_body(kind) {
                 draw.rect_gradient(l.body, theme.panel.top, theme.panel.bottom);
             }
             draw.stroke_rect(l.rect, m.border, 0.0, theme.border_dark);
             draw.pop_clip();
 
-            let content = Rect::new(
-                Vec2::new(l.header.min.x + m.gap, l.header.min.y + ((l.header.height() - m.widget_h) * 0.5).round()),
-                Vec2::new(l.header.max.x - m.gap, l.header.max.y),
-            );
-            let mut ui = Ui::new(draw, text, &theme, m, &mut self.state, content, l.header, base.with("header"), 0);
-            ui.set_window_rect(window);
-            let mut cx = AreaCx { area: l.area, state: area.state_mut(), active, pointer, prefs: &mut self.prefs, requests: &mut requests };
-            let header = HeaderIn { area: l.area, kind, editors: &editors, labels: &label_refs, tabs: &tab_labels, current: current_tab, maximized: maximized == Some(l.area) };
-            let out = area_header(&mut ui, host, &mut cx, header);
-            ui.finish();
-            actions.extend(out.actions);
-            if out.grip_pressed {
-                grip_pressed = Some(l.area);
+            if with_header {
+                let content = Rect::new(
+                    Vec2::new(l.header.min.x + m.gap, l.header.min.y + ((l.header.height() - m.widget_h) * 0.5).round()),
+                    Vec2::new(l.header.max.x - m.gap, l.header.max.y),
+                );
+                let mut ui = Ui::new(draw, text, &theme, m, &mut self.state, content, l.header, base.with("header"), 0);
+                ui.set_window_rect(window);
+                let mut cx = AreaCx { area: l.area, state: area.state_mut(), active, pointer, prefs: &mut self.prefs, requests: &mut requests };
+                let header = HeaderIn { area: l.area, kind, editors: &editors, labels: &label_refs, tabs: &tab_labels, current: current_tab, maximized: maximized == Some(l.area) };
+                let out = area_header(&mut ui, host, &mut cx, header);
+                ui.finish();
+                actions.extend(out.actions);
+                if out.grip_pressed {
+                    grip_pressed = Some(l.area);
+                }
             }
 
             let body_content = l.body.shrink(m.pad);

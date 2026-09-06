@@ -278,26 +278,35 @@ impl<E: Copy + PartialEq, S: Default> Screen<E, S> {
 
     /// Compute every area's rects for a window `rect`.
     pub fn layout(&mut self, rect: Rect, header_h: f64, sep: f64) {
+        self.layout_with(rect, header_h, sep, |_| true);
+    }
+
+    /// [`Self::layout`], with `shows_header` deciding per area whether its
+    /// header takes `header_h` or nothing at all, leaving the body the
+    /// whole area (U031). `header_h` still sizes the separators' grab zone.
+    pub fn layout_with(&mut self, rect: Rect, header_h: f64, sep: f64, shows_header: impl Fn(AreaId) -> bool) {
         self.layouts.clear();
         self.separators.clear();
         self.node_rects.clear();
         self.node_rects.resize(self.nodes.len(), Rect::ZERO);
         if let Some(area) = self.maximized.filter(|&a| self.area(a).is_some()) {
-            let (header, body) = rect.take_top(header_h.min(rect.height()));
-            self.layouts.push(AreaLayout { area, rect, header: header.round(), body: body.round() });
+            self.layout_leaf(area, rect, header_h, &shows_header);
             return;
         }
         let root = self.root;
-        self.layout_node(root, rect, header_h, sep);
+        self.layout_node(root, rect, header_h, sep, &shows_header);
     }
 
-    fn layout_node(&mut self, node: NodeId, rect: Rect, header_h: f64, sep: f64) {
+    fn layout_leaf(&mut self, area: AreaId, rect: Rect, header_h: f64, shows_header: &dyn Fn(AreaId) -> bool) {
+        let h = if shows_header(area) { header_h.min(rect.height()) } else { 0.0 };
+        let (header, body) = rect.take_top(h);
+        self.layouts.push(AreaLayout { area, rect, header: header.round(), body: body.round() });
+    }
+
+    fn layout_node(&mut self, node: NodeId, rect: Rect, header_h: f64, sep: f64, shows_header: &dyn Fn(AreaId) -> bool) {
         self.node_rects[node] = rect;
         match self.nodes[node].clone() {
-            Some(Node::Leaf(area)) => {
-                let (header, body) = rect.take_top(header_h.min(rect.height()));
-                self.layouts.push(AreaLayout { area, rect, header: header.round(), body: body.round() });
-            }
+            Some(Node::Leaf(area)) => self.layout_leaf(area, rect, header_h, shows_header),
             Some(Node::Split { axis, ratio, children }) => {
                 let grab = sep.max(1.0) + 2.0 * header_h * 0.15;
                 match axis {
@@ -311,8 +320,8 @@ impl<E: Copy + PartialEq, S: Default> Screen<E, S> {
                             gap,
                             grab: Rect::new(Vec2::new(gap.min.x - grab, gap.min.y), Vec2::new(gap.max.x + grab, gap.max.y)),
                         });
-                        self.layout_node(children[0], a, header_h, sep);
-                        self.layout_node(children[1], b, header_h, sep);
+                        self.layout_node(children[0], a, header_h, sep, shows_header);
+                        self.layout_node(children[1], b, header_h, sep, shows_header);
                     }
                     Axis::Vertical => {
                         let y = (rect.min.y + (rect.height() - sep) * ratio).round();
@@ -324,8 +333,8 @@ impl<E: Copy + PartialEq, S: Default> Screen<E, S> {
                             gap,
                             grab: Rect::new(Vec2::new(gap.min.x, gap.min.y - grab), Vec2::new(gap.max.x, gap.max.y + grab)),
                         });
-                        self.layout_node(children[0], a, header_h, sep);
-                        self.layout_node(children[1], b, header_h, sep);
+                        self.layout_node(children[0], a, header_h, sep, shows_header);
+                        self.layout_node(children[1], b, header_h, sep, shows_header);
                     }
                 }
             }

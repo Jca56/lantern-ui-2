@@ -57,7 +57,9 @@ areas. Each area holds a stack of tabs, one shown at a time, and each tab
 has an editor kind `E` (the host's enum) and a state `S` (the host's
 per-tab data: a camera, a selection; `()` when none). It changes only
 when the user splits, joins or drags a separator, or adds, closes or
-switches a tab (`+` and `⋮` in the header, `shell.next_tab`).
+switches a tab (`+` and `⋮` in the header, `shell.next_tab`). An editor
+whose `Host::shows_header` is `false` gets no header at all; its body is
+the whole area (U031).
 
 **Immediate** — inside every header and body the host re-declares its
 widgets each rebuild through a `Ui`: `ui.slider("Opacity", &mut v, 0.0,
