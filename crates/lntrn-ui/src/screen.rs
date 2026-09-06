@@ -391,11 +391,14 @@ impl<E: Copy + PartialEq, S: Default> Screen<E, S> {
         let rect = self.node_rects[sep.node];
         let ratio = match sep.axis {
             Axis::Horizontal => {
-                let x = pointer.x.clamp(rect.min.x + min_px, rect.max.x - min_px);
+                // A split too small for two minimum areas pins the separator mid-way.
+                let (lo, hi) = (rect.min.x + min_px, rect.max.x - min_px);
+                let x = if lo <= hi { pointer.x.clamp(lo, hi) } else { rect.center().x };
                 (x - rect.min.x) / rect.width().max(1.0)
             }
             Axis::Vertical => {
-                let y = pointer.y.clamp(rect.min.y + min_px, rect.max.y - min_px);
+                let (lo, hi) = (rect.min.y + min_px, rect.max.y - min_px);
+                let y = if lo <= hi { pointer.y.clamp(lo, hi) } else { rect.center().y };
                 (y - rect.min.y) / rect.height().max(1.0)
             }
         };

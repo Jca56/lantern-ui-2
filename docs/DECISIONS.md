@@ -583,3 +583,16 @@ a side panel wants to be denser than what is read in it.
 **Rejected:** A per-area zoom in the layout (state with no home in a
 saved layout, and areas change editors); scaling the header too (the
 tab strip should look the same everywhere).
+
+## U036 — Status may live in a bar along the bottom
+**Status:** Accepted (Alva, 2026-09-06)
+**Decision:** `Host::status_bar()`, `false` by default. When `true` the
+shell takes one widget height off the bottom of the window for a bar
+(header gradient, a dark rule above it) and draws `Host::status()` there,
+dim and left-aligned; the title bar shows the title alone. lntrn-code
+answers `true`: branch, caret, language, problems, servers.
+**Why:** An editor's status is a sentence that grows (branch, line,
+language, problems, servers); crammed right of the title it fought the
+window buttons and hid on narrow windows.
+**Rejected:** Always a bottom bar (small tools want the row back); a
+per-area status (the branch and the servers are not an area's).

@@ -5,7 +5,7 @@
 
 use lntrn_math::{Rect, Vec2};
 use lntrn_render::DrawList;
-use lntrn_text::TextEngine;
+use lntrn_text::{TextEngine, TextStyle};
 
 use crate::id::WidgetId;
 use crate::host::Host;
@@ -227,6 +227,34 @@ impl<H: Host> Shell<H> {
         ui.finish();
 
         TitleBar { rest, command: cmd, open_menu, hovered_menu }
+    }
+}
+
+impl<H: Host> Shell<H> {
+    /// The status bar's height: shorter than a widget row.
+    pub(crate) fn status_bar_h(m: Metrics) -> f64 {
+        (m.widget_h * 0.7).round()
+    }
+
+    /// A row along the bottom of the window with the host's status in
+    /// it, dim, left-aligned, in the title bar's colors and a smaller
+    /// text (U036).
+    pub(crate) fn status_bar(&mut self, draw: &mut DrawList, text: &mut TextEngine, theme: &Theme, m: Metrics, bar: Rect, status: &str) {
+        let g = theme.title;
+        draw.set_layer(0);
+        draw.push_clip_absolute(bar);
+        draw.rect_gradient(bar, g.top, g.bottom);
+        draw.hline(bar.min.x, bar.max.x, bar.min.y, m.border, theme.border_dark);
+        draw.hline(bar.min.x, bar.max.x, bar.min.y + m.border, m.border, theme.highlight(g.mid()));
+        draw.pop_clip();
+        if status.is_empty() {
+            return;
+        }
+        let mut ui = Ui::new(draw, text, theme, m, &mut self.state, bar, bar, WidgetId::ROOT.with("status"), 0);
+        let style = TextStyle::new((m.text_size * 0.85).round().max(10.0));
+        let rect = Rect::new(Vec2::new(bar.min.x + m.pad * 2.0, bar.min.y), Vec2::new(bar.max.x - m.pad * 2.0, bar.max.y));
+        ui.text_in_rect(status, &style, rect, theme.text_dim);
+        ui.finish();
     }
 }
 

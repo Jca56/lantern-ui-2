@@ -217,7 +217,8 @@ impl<H: Host> Shell<H> {
         let edge_cursor = self.state.cursor_icon;
         let title = self.title.clone().unwrap_or_else(|| host.title());
         let status = host.status();
-        let tb = self.title_bar(draw, text, &theme, m, window, ws, &title, &status, host.title_menus());
+        let bottom_bar = host.status_bar();
+        let tb = self.title_bar(draw, text, &theme, m, window, ws, &title, if bottom_bar { "" } else { &status }, host.title_menus());
         window_command = window_command.or(tb.command);
         if let Some((name, at)) = tb.open_menu {
             self.open_menu(host, &name, at);
@@ -227,7 +228,8 @@ impl<H: Host> Shell<H> {
             // Sliding along the title bar with a menu open switches menus.
             self.open_menu(host, &name, at);
         }
-        let areas_window = tb.rest;
+        // The status bar takes a row along the bottom (U036).
+        let (status_rect, areas_window) = if bottom_bar { tb.rest.take_bottom(Self::status_bar_h(m)) } else { (Rect::ZERO, tb.rest) };
         // Areas whose editor goes without a header (U031) give the body the
         // whole area.
         let headerless: Vec<AreaId> = self.screen.area_ids().filter(|&a| self.screen.area(a).is_some_and(|ar| !host.shows_header(ar.editor()))).collect();
@@ -406,6 +408,9 @@ impl<H: Host> Shell<H> {
                 }
                 draw.set_layer(0);
             }
+        }
+        if bottom_bar {
+            self.status_bar(draw, text, &theme, m, status_rect, &status);
         }
         self.draw_toasts(draw, text, &theme, m, window);
         if self.prefs.debug_overlay {

@@ -358,9 +358,15 @@ pub trait Host {
 
     /// Text in the middle of the title bar.
     fn title(&self) -> String;
-    /// Dim text right of the title (the last report, a mode).
+    /// Dim text right of the title (the last report, a mode), or along
+    /// the bottom when [`Host::status_bar`] says so.
     fn status(&self) -> String {
         String::new()
+    }
+    /// Show [`Host::status`] in a bar along the bottom of the window
+    /// instead of the title bar (U036).
+    fn status_bar(&self) -> bool {
+        false
     }
     /// Menus on the left of the title bar: (label, menu name).
     fn title_menus(&self) -> &[(&str, &str)] {
