@@ -43,7 +43,7 @@ them.
   range sliders, vertical faders, an XY pad, drag numbers, spinners,
   validated text fields (red frame, the reason inside, Enter blocked),
   knobs, dropdowns, an editable combo box, menu buttons, selectables,
-  text fields (placeholders, passwords), a multi-line text area with
+  text fields (placeholders, passwords), a path bar of crumbs, a multi-line text area with
   undo, colour picker, tree view, tables with sortable and resizable
   columns whose cells are widgets, virtual lists (ten thousand rows cost
   the same as ten), scroll areas that go down or both ways, level

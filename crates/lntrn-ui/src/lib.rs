@@ -65,6 +65,6 @@ pub use theme::{Metrics, Theme};
 pub use titlebar::{ResizeEdge, WindowCommand};
 pub use toasts::Toast;
 pub use ui::{DropZone, FILL, KeyStep, Response, Sense, Ui};
-pub use widgets::{Align, Cell, Column, CurveResponse, RowStep, ScrollView, Table, TableResponse, TextOpts, TextResponse, TreeResponse};
+pub use widgets::{Align, Cell, Column, CurveResponse, PathBarResponse, RowStep, ScrollView, Table, TableResponse, TextOpts, TextResponse, TreeResponse};
 /// Re-exported: the handle [`Ui::image`] draws.
 pub use lntrn_render::ImageHandle;

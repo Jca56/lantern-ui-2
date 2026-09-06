@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use lntrn_math::{Rect, Vec2};
 
 use crate::state::DragPayload;
-use crate::ui::{FILL, Ui};
+use crate::ui::Ui;
 
 #[derive(Clone, Debug, PartialEq)]
 struct Entry {
@@ -172,10 +172,13 @@ pub fn draw(ui: &mut Ui, fb: &mut FileBrowser, rect: Rect) -> Verdict {
         if ui.button("Up").clicked {
             fb.up();
         }
-        let id = ui.id("dir");
-        let r = ui.alloc(Vec2::new(FILL, m.widget_h));
-        if ui.text_edit_core(id, r, &mut fb.dir_text).committed {
-            let typed = fb.dir_text.clone();
+        // Crumbs that climb; the end types a path (U032).
+        let r = ui.path_bar("dir", &fb.dir, &mut fb.dir_text);
+        if let Some(dir) = r.go {
+            fb.dir = dir;
+            fb.refresh();
+        }
+        if let Some(typed) = r.typed {
             fb.go(&typed);
         }
     });

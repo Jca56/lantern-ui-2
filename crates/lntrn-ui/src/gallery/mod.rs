@@ -59,6 +59,9 @@ pub struct GalleryState {
     pub number: f64,
     pub count: i64,
     pub text: String,
+    /// The path bar's folder and its typing buffer.
+    pub path: PathBuf,
+    pub path_text: String,
     pub choice: usize,
     pub selected: usize,
     pub gain: f64,
@@ -115,6 +118,8 @@ impl Default for GalleryState {
             number: 1.5,
             count: 3,
             text: "Type here".to_owned(),
+            path: std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")),
+            path_text: String::new(),
             choice: 1,
             selected: 2,
             gain: 0.5,
@@ -259,6 +264,14 @@ fn text(ui: &mut Ui, g: &mut GalleryState) {
     ui.row(|ui| {
         ui.text_field_hint("search", &mut g.search, "A placeholder, until you type…");
     });
+    ui.heading("Path bar");
+    let r = ui.path_bar("path", &g.path, &mut g.path_text);
+    if let Some(p) = r.go {
+        g.path = p;
+    }
+    if let Some(t) = r.typed {
+        g.path = PathBuf::from(t);
+    }
     ui.row(|ui| {
         ui.password_field("secret", &mut g.secret, "A password");
         ui.label_dim(&format!("{} chars", g.secret.chars().count()));

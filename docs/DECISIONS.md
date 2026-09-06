@@ -525,3 +525,18 @@ rearranges.
 **Rejected:** A shell-wide switch (a host may want a header on the
 panel and none on the view); a zero `header_height` in the theme (the
 theme is the user's, the layout is the app's).
+
+## U032 — A path bar of crumbs
+**Status:** Accepted (Alva, 2026-09-05)
+**Decision:** `Ui::path_bar(label, path, text)`: the path as crumbs in one
+recessed field. A crumb click goes to that folder (`go`), a click on the
+last crumb or the empty end turns the bar into a text field holding the
+path (Enter hands back `typed`, Escape or a click elsewhere gives it
+up); crumbs that do not fit fall off the left behind a "…" that goes to
+the last of them. The file browser's path row is one; the gallery shows
+one.
+**Why:** A typed path field makes the user retype what the listing
+already shows; crumbs make climbing one click and keep typing for the
+times it is faster.
+**Rejected:** A dropdown of parents (two clicks, and it hides where you
+are); crumbs that wrap to a second line (the dialog's rows are counted).
