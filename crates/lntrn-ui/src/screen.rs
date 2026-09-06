@@ -1,11 +1,12 @@
 //! The retained layout: a binary tree of splits whose leaves are areas. Each
 //! area holds a stack of tabs, one editor each, and shows one of them under
-//! its header. Changes only when the user splits, joins or drags a
-//! separator, or adds, closes or switches a tab.
+//! its header. Changes only when the user splits, joins or moves an area
+//! or drags a separator, or adds, closes or switches a tab.
 //!
 //! Generic over the host's editor kind `E` and per-area state `S`
 //! (see [`crate::Host`]); the shell fills them in. Saving and restoring
-//! the tree as text lives in [`crate::screen_text`].
+//! the tree as text lives in [`crate::screen_text`]; moving an area to
+//! another place in the tree in [`crate::screen_dock`].
 
 use lntrn_math::{Rect, Vec2};
 
@@ -150,6 +151,14 @@ impl<E: Copy + PartialEq, S: Default> Screen<E, S> {
         self.active.filter(|&a| is(a)).or_else(|| self.layouts.iter().map(|l| l.area).find(|&a| is(a)))
     }
 
+    /// Like `target`, but a tab hidden behind another counts too: the
+    /// focused area first, then the areas on screen. Returns the area and
+    /// the index of its tab hosting `editor`.
+    pub fn tab_hosting(&self, editor: E) -> Option<(AreaId, usize)> {
+        let find = |a: AreaId| self.area(a).and_then(|ar| ar.tabs.iter().position(|t| t.editor == editor)).map(|i| (a, i));
+        self.active.and_then(find).or_else(|| self.layouts.iter().map(|l| l.area).find_map(find))
+    }
+
     pub(crate) fn alloc_node(&mut self, n: Node) -> NodeId {
         if let Some(i) = self.nodes.iter().position(Option::is_none) {
             self.nodes[i] = Some(n);
@@ -170,11 +179,11 @@ impl<E: Copy + PartialEq, S: Default> Screen<E, S> {
         }
     }
 
-    fn leaf_of(&self, area: AreaId) -> Option<NodeId> {
+    pub(crate) fn leaf_of(&self, area: AreaId) -> Option<NodeId> {
         self.nodes.iter().position(|n| matches!(n, Some(Node::Leaf(a)) if *a == area))
     }
 
-    fn parent_of(&self, node: NodeId) -> Option<NodeId> {
+    pub(crate) fn parent_of(&self, node: NodeId) -> Option<NodeId> {
         self.nodes.iter().position(|n| matches!(n, Some(Node::Split { children, .. }) if children.contains(&node)))
     }
 
@@ -189,9 +198,10 @@ impl<E: Copy + PartialEq, S: Default> Screen<E, S> {
         Some(new_area)
     }
 
-    /// Remove `area`; its sibling takes the parent's place. The last area
-    /// cannot be removed.
-    pub fn join(&mut self, area: AreaId) -> bool {
+    /// Take `area`'s leaf out of the tree; its sibling takes the parent's
+    /// place. The area itself stays, to be put back elsewhere. The root
+    /// leaf (the only area) cannot be taken out.
+    pub(crate) fn unlink(&mut self, area: AreaId) -> bool {
         let Some(leaf) = self.leaf_of(area) else {
             return false;
         };
@@ -205,6 +215,15 @@ impl<E: Copy + PartialEq, S: Default> Screen<E, S> {
         let sibling_node = self.nodes[sibling].take();
         self.nodes[parent] = sibling_node;
         self.nodes[leaf] = None;
+        true
+    }
+
+    /// Remove `area`; its sibling takes the parent's place. The last area
+    /// cannot be removed.
+    pub fn join(&mut self, area: AreaId) -> bool {
+        if !self.unlink(area) {
+            return false;
+        }
         self.areas[area] = None;
         if self.active == Some(area) {
             self.active = self.areas.iter().position(Option::is_some);
