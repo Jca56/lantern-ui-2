@@ -24,10 +24,17 @@ use crate::frame::{Gfx, GpuShared, draw_frame, rebuild};
 pub(crate) struct Win<H: AppHost> {
     /// 0 for the main window; what the host sees as `RenderCx::window`.
     pub id: u32,
-    pub window: Arc<Window>,
-    pub gfx: Gfx,
-    pub shell: Shell<H>,
+    /// `clipboard` and `gfx` come before `window` on purpose: fields drop
+    /// in declaration order, and winit disconnects the Wayland display
+    /// when the last handle to the window goes. Both the clipboard's own
+    /// Wayland objects and the GPU's (the wgpu instance's GL backend keeps
+    /// an EGL display on the same connection, and the surface holds the
+    /// instance's last reference) must be destroyed before that, or their
+    /// teardown is a segfault in libwayland-client.
     pub clipboard: Clipboard,
+    pub gfx: Gfx,
+    pub window: Arc<Window>,
+    pub shell: Shell<H>,
     /// Events since the last rebuild, in order.
     pub events: Vec<Event>,
     mods: Modifiers,

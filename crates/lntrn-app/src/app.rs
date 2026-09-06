@@ -159,6 +159,9 @@ pub fn run<H: AppHost>(config: AppConfig, mut host: H, mut shell: Shell<H>) {
 struct App<H: AppHost> {
     config: AppConfig,
     /// The GPU, once the first window brought it up.
+    /// Declared before `wins` on purpose: it drops first, while the windows
+    /// still hold the Wayland connection the GPU's GL backend sits on; the
+    /// windows then let go of the GPU before the connection (see `Win`).
     shared: Option<GpuShared>,
     /// The windows, the main one first.
     wins: Vec<Win<H>>,
