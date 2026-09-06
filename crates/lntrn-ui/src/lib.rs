@@ -3,7 +3,7 @@
 //! Two layers:
 //! - **Retained**: [`Screen`] tiles the window into areas, each hosting one
 //!   editor. It is plain data (an app may save it) and it changes only when
-//!   the user splits, joins or drags a separator.
+//!   the user splits, joins, moves an area or drags a separator.
 //! - **Immediate**: inside every region the widgets are re-declared on each
 //!   rebuild through a [`Ui`] context, which lays them out, routes input and
 //!   emits draw commands. Per-widget persistent state (caret, scroll offset,
@@ -38,6 +38,7 @@ pub mod popups;
 pub mod prefs;
 pub mod rich;
 pub mod screen;
+pub mod screen_dock;
 pub mod screen_text;
 pub mod shell;
 pub mod state;
@@ -59,6 +60,7 @@ pub use keymap::{KeyConfig, KeyItem, KeyMap, Trigger};
 pub use prefs::Prefs;
 pub use rich::RichResponse;
 pub use screen::{Area, AreaId, Axis, Screen};
+pub use screen_dock::{Drop, Side};
 pub use shell::{Shell, ShellOutput, WindowState};
 pub use state::{CursorIcon, DragPayload, History, KeyPress, Snapshot, UiState};
 pub use theme::{Metrics, Theme};

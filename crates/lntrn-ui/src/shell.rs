@@ -20,6 +20,7 @@ use crate::menu::{self, MenuState};
 use crate::popups::{self, Popup, dispatch};
 use crate::prefs::Prefs;
 use crate::screen::{AreaId, Axis, Screen};
+use crate::screen_dock::Drop;
 use crate::state::{CursorIcon, UiState};
 use crate::theme::Metrics;
 use crate::titlebar::WindowCommand;
@@ -66,7 +67,8 @@ pub struct Shell<H: Host> {
     pub(crate) close_window: bool,
     pub(crate) popup: Option<Popup>,
     pub(crate) drag_sep: Option<usize>,
-    /// An area whose header grip is being dragged, to drop on another.
+    /// An area whose header grip is being dragged, to drop on another
+    /// area or a window edge (see [`crate::screen_dock`]).
     pub(crate) drag_area: Option<AreaId>,
     pub(crate) toasts: Vec<crate::toasts::Toast>,
     pub(crate) stats: FrameStats,
@@ -301,6 +303,7 @@ impl<H: Host> Shell<H> {
         let label_refs: Vec<&str> = labels.iter().map(String::as_str).collect();
         let layouts: Vec<_> = self.screen.layouts().to_vec();
         let maximized = self.screen.maximized;
+        let alone = self.screen.area_count() < 2;
         let mut actions = Vec::new();
         let mut changed_globals = false;
         let mut grip_pressed: Option<AreaId> = None;
@@ -336,7 +339,7 @@ impl<H: Host> Shell<H> {
                 let mut ui = Ui::new(draw, text, &theme, m, &mut self.state, content, l.header, base.with("header"), 0);
                 ui.set_window_rect(window);
                 let mut cx = AreaCx { area: l.area, state: area.state_mut(), active, pointer, prefs: &mut self.prefs, requests: &mut requests };
-                let header = HeaderIn { area: l.area, kind, editors: &editors, labels: &label_refs, tabs: &tab_labels, current: current_tab, maximized: maximized == Some(l.area) };
+                let header = HeaderIn { area: l.area, kind, editors: &editors, labels: &label_refs, tabs: &tab_labels, current: current_tab, maximized: maximized == Some(l.area), alone };
                 let out = area_header(&mut ui, host, &mut cx, header);
                 ui.finish();
                 actions.extend(out.actions);
@@ -345,8 +348,13 @@ impl<H: Host> Shell<H> {
                 }
             }
 
-            let body_content = l.body.shrink(m.pad);
-            let mut ui = Ui::new(draw, text, &theme, m, &mut self.state, body_content, l.body, base.with("body"), 0);
+            // A body may draw smaller (or larger) than the shell: a side
+            // panel beside big code, say (U035). The header keeps the
+            // shell's size.
+            let scale = host.editor_scale(kind).clamp(0.25, 4.0);
+            let mb = if (scale - 1.0).abs() < 1e-9 { m } else { theme.metrics(m.scale * scale) };
+            let body_content = l.body.shrink(mb.pad);
+            let mut ui = Ui::new(draw, text, &theme, mb, &mut self.state, body_content, l.body, base.with("body"), 0);
             ui.set_window_rect(window);
             let mut cx = AreaCx { area: l.area, state: area.state_mut(), active, pointer, prefs: &mut self.prefs, requests: &mut requests };
             changed_globals |= host.draw_body(kind, &mut ui, &mut cx);
@@ -363,18 +371,22 @@ impl<H: Host> Shell<H> {
             draw.pop_clip();
         }
 
-        // ---- dragging an area onto another swaps them --------------------
+        // ---- dragging an area by its grip: onto the middle of another to
+        // swap, onto its edge to dock beside it, to a window edge to span
+        // it. A ghost shows where it would land. ----------------------------
         if let Some(a) = grip_pressed {
             self.drag_area = Some(a);
         }
         let mut drag_cursor = None;
         if let Some(source) = self.drag_area {
             let moved = (self.state.pointer - self.state.press_pos).length() > m.px(8.0);
-            let target = self.screen.area_at(self.state.pointer).filter(|&t| t != source);
+            let drop = if moved { self.screen.drop_at(source, self.state.pointer, areas_window, m.header_h) } else { None };
+            let share = drop.map_or(0.5, |d| self.screen.drop_share(source, d, areas_window));
             if self.state.released {
-                if moved && let Some(t) = target {
-                    self.screen.swap(source, t);
-                    self.screen.active = Some(t);
+                if let Some(d) = drop
+                    && let Some(landed) = self.screen.apply_drop(source, d, share)
+                {
+                    self.screen.active = Some(landed);
                 }
                 self.drag_area = None;
                 self.state.request_rebuild = true;
@@ -386,10 +398,10 @@ impl<H: Host> Shell<H> {
                     draw.rect(l.rect, theme.focus.fade(0.12));
                     draw.pop_clip();
                 }
-                if let Some(l) = target.and_then(|t| self.screen.layout_of(t)) {
-                    draw.push_clip_absolute(l.rect);
-                    draw.rect(l.rect, theme.accent.fade(0.18));
-                    draw.stroke_rect(l.rect, m.focus_border * 2.0, 0.0, theme.accent);
+                if let Some(ghost) = drop.and_then(|d| self.screen.drop_rect(d, areas_window, share)) {
+                    draw.push_clip_absolute(areas_window);
+                    draw.rect(ghost, theme.accent.fade(0.18));
+                    draw.stroke_rect(ghost, m.focus_border * 2.0, 0.0, theme.accent);
                     draw.pop_clip();
                 }
                 draw.set_layer(0);
@@ -461,6 +473,13 @@ impl<H: Host> Shell<H> {
                 AreaAction::SetEditor(area, kind) => {
                     if let Some(a) = self.screen.area_mut(area) {
                         a.set_editor(kind);
+                    }
+                }
+                AreaAction::Dock(area, side) => {
+                    let drop = Drop::Edge(side);
+                    let share = self.screen.drop_share(area, drop, areas_window);
+                    if self.screen.apply_drop(area, drop, share).is_some() {
+                        self.screen.active = Some(area);
                     }
                 }
             }

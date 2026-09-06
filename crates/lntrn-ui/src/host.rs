@@ -398,6 +398,13 @@ pub trait Host {
         let _ = editor;
         true
     }
+    /// How big an area showing this editor draws its body, relative to
+    /// the UI scale: a side panel may go smaller than the code beside it
+    /// (U035). `1.0` by default; the header keeps the shell's size.
+    fn editor_scale(&self, editor: Self::Editor) -> f64 {
+        let _ = editor;
+        1.0
+    }
     /// Controls in an area's header, after the editor dropdown.
     fn draw_header(&mut self, editor: Self::Editor, ui: &mut Ui, cx: &mut AreaCx<Self::AreaState>) {
         let _ = (editor, ui, cx);

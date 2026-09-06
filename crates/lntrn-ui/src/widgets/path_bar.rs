@@ -2,11 +2,14 @@
 //! the current folder's name or the empty end to type a path instead —
 //! Enter takes it, Escape or a click elsewhere gives it up. Crumbs that
 //! do not fit fall off the left behind a "…" that goes to the last of them.
+//! One crumb may be marked (drawn in the accent): the project a file
+//! tree belongs to, say.
 
 use std::path::{Path, PathBuf};
 
 use lntrn_math::{Color, Rect, Vec2};
 
+use crate::id::WidgetId;
 use crate::state::CursorIcon;
 use crate::ui::{FILL, Sense, Ui};
 
@@ -24,6 +27,31 @@ impl Ui<'_> {
     /// `text` is the caller's buffer for the typed path; it is filled
     /// with `path` when editing starts.
     pub fn path_bar(&mut self, label: &str, path: &Path, text: &mut String) -> PathBarResponse {
+        self.path_bar_marked(label, path, None, text)
+    }
+
+    /// Put the bar named `label` into typing mode, as a click on its end
+    /// does: for an Open… command that wants a path typed. Call it before
+    /// drawing the bar in the same frame.
+    pub fn path_bar_edit(&mut self, label: &str, path: &Path, text: &mut String) {
+        let id = self.id(label);
+        self.path_bar_start(id, path, text);
+    }
+
+    fn path_bar_start(&mut self, id: WidgetId, path: &Path, text: &mut String) {
+        let edit_id = id.with("edit");
+        *text = path.display().to_string();
+        *self.state.open(id) = true;
+        self.state.focus = Some(edit_id);
+        self.state.focus_visible = false;
+        let te = self.state.text_edit(edit_id);
+        te.cursor = text.len();
+        te.anchor = te.cursor;
+        self.state.request_rebuild = true;
+    }
+
+    /// [`Self::path_bar`] with the crumb at `mark` drawn in the accent.
+    pub fn path_bar_marked(&mut self, label: &str, path: &Path, mark: Option<&Path>, text: &mut String) -> PathBarResponse {
         let id = self.id(label);
         let edit_id = id.with("edit");
         let m = self.m;
@@ -86,7 +114,14 @@ impl Ui<'_> {
                     self.draw.rounded_rect(r, m.radius * 0.6, theme.selection.fade(0.35));
                 }
             }
-            self.text_centered(name, &style, r, if i == last { theme.text } else { theme.text_dim });
+            let color = if mark == Some(target.as_path()) {
+                theme.accent
+            } else if i == last {
+                theme.text
+            } else {
+                theme.text_dim
+            };
+            self.text_centered(name, &style, r, color);
             if cr.clicked {
                 if i == last {
                     edit = true;
@@ -107,14 +142,7 @@ impl Ui<'_> {
             self.state.cursor_icon = CursorIcon::Text;
         }
         if tr.clicked || edit {
-            *text = path.display().to_string();
-            *self.state.open(id) = true;
-            self.state.focus = Some(edit_id);
-            self.state.focus_visible = false;
-            let te = self.state.text_edit(edit_id);
-            te.cursor = text.len();
-            te.anchor = te.cursor;
-            self.state.request_rebuild = true;
+            self.path_bar_start(id, path, text);
         }
         out
     }

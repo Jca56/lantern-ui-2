@@ -227,7 +227,18 @@ fn tabs_stack_editors_in_one_area() {
     let mut host = Tiny::default();
     h.shell_frame(&mut shell, &mut host);
     let header = WidgetId::ROOT.with_u64(0).with("header");
-    assert!(h.rect_of(header.with("tab").with_index(0)).is_none(), "one tab: no strip");
+    // The one tab is the strip, and the lit tab is the editor picker:
+    // clicked, it lists the editors and the pick switches this tab.
+    let lit = h.rect_of(header.with("tab").with_index(0)).expect("one tab: still a strip");
+    press_release(&mut h, &mut shell, &mut host, lit.center());
+    let pick = h.rect_of(header.with("tab").with_index(0).with("item").with_index(1)).expect("the editor list");
+    press_release(&mut h, &mut shell, &mut host, pick.center());
+    assert_eq!(shell.screen.area(0).unwrap().editor(), 1, "the tab switched editor");
+    assert_eq!(shell.screen.area(0).unwrap().tabs.len(), 1, "no tab was added");
+    press_release(&mut h, &mut shell, &mut host, lit.center());
+    let back = h.rect_of(header.with("tab").with_index(0).with("item").with_index(0)).expect("the editor list again");
+    press_release(&mut h, &mut shell, &mut host, back.center());
+    assert_eq!(shell.screen.area(0).unwrap().editor(), 0);
     // `+` lists the editors; picking one opens it in a new tab.
     let plus = h.rect_of(header.with("+")).expect("the + button");
     press_release(&mut h, &mut shell, &mut host, plus.center());

@@ -540,3 +540,46 @@ already shows; crumbs make climbing one click and keep typing for the
 times it is faster.
 **Rejected:** A dropdown of parents (two clicks, and it hides where you
 are); crumbs that wrap to a second line (the dialog's rows are counted).
+
+## U033 — An area moves: dock beside, dock at an edge, or swap
+**Status:** Accepted (Alva, 2026-09-05)
+**Decision:** Dragging an area's header grip shows where it would land
+and, released, puts it there: the middle of another area swaps the two
+(the tree keeps its shape); the outer part of another area (30% of its
+smaller side) splits that area and docks the dragged one on that side;
+a band along the window's edge (one header height, past the edge
+counts) docks it at the root, spanning the window. `Screen::move_beside`
+and `move_to_edge` (`screen_dock.rs`) take a leaf out with `unlink` and
+put it back beside a node; `drop_at` names the drop, `drop_rect` the
+ghost, `drop_share` how much it takes (what it had along the new axis,
+15–50%). The `⋮` menu docks at an edge without a mouse.
+**Why:** Swapping alone cannot make a new shape: a bottom-wide terminal
+could not become a right-tall one, a top-left tree could not run the
+full height, without closing areas and splitting others.
+**Rejected:** Drop zones only inside areas (full-height needs a root
+insert); a fixed 50% share (a narrow panel should stay narrow when it
+moves).
+
+## U034 — The tab strip is the editor picker
+**Status:** Accepted (Alva, 2026-09-06)
+**Decision:** The area header has no editor dropdown. Every area shows
+its tab strip, one tab even; the lit tab names the showing editor and,
+clicked, lists the editors to switch that tab to (the dropdown's job);
+the other tabs switch tabs. `+` still adds a tab.
+**Why:** "Files ▾" beside a "Files" tab said the same thing twice and
+took the widest part of a narrow panel's header.
+**Rejected:** Hiding the dropdown only when there are tabs (two header
+shapes to learn); a host flag to hide it (every host wants the room).
+
+## U035 — A body may draw at its own scale
+**Status:** Accepted (Alva, 2026-09-06)
+**Decision:** `Host::editor_scale(editor)`, `1.0` by default. The shell
+builds an area's body `Ui` with the theme's metrics at UI scale × that
+factor (clamped 0.25–4); the header, separators and popups keep the
+shell's size. lntrn-code answers its *Panel Scale* setting for Files,
+Git, Search and Problems.
+**Why:** Big code with a big tree beside it leaves no room for the code;
+a side panel wants to be denser than what is read in it.
+**Rejected:** A per-area zoom in the layout (state with no home in a
+saved layout, and areas change editors); scaling the header too (the
+tab strip should look the same everywhere).
