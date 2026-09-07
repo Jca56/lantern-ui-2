@@ -33,6 +33,8 @@ pub(crate) enum Node {
 pub struct Tab<E, S> {
     pub editor: E,
     pub state: S,
+    /// A name the user gave the tab, instead of the editor's label.
+    pub name: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -45,7 +47,7 @@ pub struct Area<E, S> {
 
 impl<E: Copy, S: Default> Area<E, S> {
     pub fn new(editor: E) -> Self {
-        Self { tabs: vec![Tab { editor, state: S::default() }], current: 0 }
+        Self { tabs: vec![Tab { editor, state: S::default(), name: None }], current: 0 }
     }
 
     /// The editor of the tab that shows.
@@ -237,9 +239,58 @@ impl<E: Copy + PartialEq, S: Default> Screen<E, S> {
     /// Add a tab hosting `editor` to `area` and show it. Returns its index.
     pub fn add_tab(&mut self, area: AreaId, editor: E) -> Option<usize> {
         let a = self.area_mut(area)?;
-        a.tabs.push(Tab { editor, state: S::default() });
+        a.tabs.push(Tab { editor, state: S::default(), name: None });
         a.current = a.tabs.len() - 1;
         Some(a.current)
+    }
+
+    /// Give tab `tab` of `area` a name of its own (`None`: the editor's).
+    pub fn rename_tab(&mut self, area: AreaId, tab: usize, name: Option<String>) {
+        if let Some(a) = self.area_mut(area)
+            && let Some(t) = a.tabs.get_mut(tab)
+        {
+            t.name = name.map(|n| n.trim().to_owned()).filter(|n| !n.is_empty());
+        }
+    }
+
+    /// Put tab `from` of `area` at index `to`; the showing tab stays the
+    /// same one.
+    pub fn move_tab(&mut self, area: AreaId, from: usize, to: usize) {
+        let Some(a) = self.area_mut(area) else {
+            return;
+        };
+        if from >= a.tabs.len() || from == to {
+            return;
+        }
+        let showing = a.current;
+        let t = a.tabs.remove(from);
+        let to = to.min(a.tabs.len());
+        a.tabs.insert(to, t);
+        a.current = if showing == from {
+            to
+        } else if from < showing && to >= showing {
+            showing - 1
+        } else if from > showing && to <= showing {
+            showing + 1
+        } else {
+            showing
+        };
+    }
+
+    /// Close tab `tab` of `area`; the one before it shows when it was the
+    /// showing one. The last tab cannot be closed.
+    pub fn close_tab_at(&mut self, area: AreaId, tab: usize) -> bool {
+        let Some(a) = self.area_mut(area) else {
+            return false;
+        };
+        if a.tabs.len() < 2 || tab >= a.tabs.len() {
+            return false;
+        }
+        a.tabs.remove(tab);
+        if a.current > tab || a.current >= a.tabs.len() {
+            a.current = a.current.saturating_sub(1);
+        }
+        true
     }
 
     /// Close the showing tab of `area`; the one before it shows. The last
@@ -410,4 +461,30 @@ impl<E: Copy + PartialEq, S: Default> Screen<E, S> {
         header_h * MIN_AREA_HEADERS
     }
 
+}
+
+#[cfg(test)]
+mod tab_tests {
+    use super::*;
+
+    #[test]
+    fn tabs_move_rename_and_close_by_index() {
+        let mut s: Screen<u8, ()> = Screen::new(0);
+        s.add_tab(0, 1);
+        s.add_tab(0, 2);
+        s.select_tab(0, 1);
+        s.move_tab(0, 0, 2);
+        let kinds: Vec<u8> = s.area(0).unwrap().tabs.iter().map(|t| t.editor).collect();
+        assert_eq!(kinds, vec![1, 2, 0]);
+        assert_eq!(s.area(0).unwrap().current, 0, "the showing tab (editor 1) follows its move");
+        s.rename_tab(0, 2, Some("  Build  ".into()));
+        assert_eq!(s.area(0).unwrap().tabs[2].name.as_deref(), Some("Build"));
+        s.rename_tab(0, 2, Some("   ".into()));
+        assert_eq!(s.area(0).unwrap().tabs[2].name, None, "blank means the editor's label");
+        assert!(s.close_tab_at(0, 0));
+        assert_eq!(s.area(0).unwrap().tabs.len(), 2);
+        assert_eq!(s.area(0).unwrap().current, 0);
+        s.close_tab_at(0, 1);
+        assert!(!s.close_tab_at(0, 0), "the last tab stays");
+    }
 }

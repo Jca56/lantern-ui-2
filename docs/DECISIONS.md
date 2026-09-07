@@ -615,3 +615,17 @@ IDE window looked pasted on.
 **Rejected:** A preference in the shell (the desktop already has the
 setting); fading every fill (widgets need their contrast).
 
+## U038 — A tab has a menu of its own, a name of its own, and a place
+**Status:** Accepted (Alva, 2026-09-06)
+**Decision:** A right click on a header tab lists *Rename…* and *Close
+Tab* (the last tab keeps only *Rename…*). Rename types in the tab's own
+spot; Enter keeps the name (`Tab::name`), Escape or a click elsewhere
+drops it, and a blank or the editor's own label means no name. Names are
+saved in the layout as `editor=Name`. A tab dragged past 8 px along the
+strip moves (`Screen::move_tab`), a ghost following the pointer and a
+bar marking the slot. Panel work (split, dock, detach) stays in `⋮`.
+**Why:** Two terminals called "Terminal" tell nothing apart; the file
+tabs inside the code editor already rearranged.
+**Rejected:** A dialog for the name (a tab is right there to type in);
+dragging tabs between areas (dock the area instead).
+

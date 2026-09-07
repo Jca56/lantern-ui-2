@@ -1,6 +1,7 @@
 //! The area tree as text, for saving between runs: a leaf is `[name]`
-//! (or `[name|name*|name]` with tabs, the showing one starred), a split is
-//! `(h ratio first second)` or `(v ...)`.
+//! (or `[name|name*|name]` with tabs, the showing one starred, a tab the
+//! user named as `name=Given name`), a split is `(h ratio first second)`
+//! or `(v ...)`.
 
 use crate::screen::{Area, Axis, Node, NodeId, Screen, Tab};
 
@@ -24,7 +25,11 @@ impl<E: Copy + PartialEq, S: Default> Screen<E, S> {
                         if i > 0 {
                             out.push('|');
                         }
-                        out.extend(name(tab.editor).chars().filter(|c| !"[]|*".contains(*c)));
+                        out.extend(name(tab.editor).chars().filter(|c| !"[]|*=".contains(*c)));
+                        if let Some(n) = &tab.name {
+                            out.push('=');
+                            out.extend(n.chars().filter(|c| !"[]|*=".contains(*c)));
+                        }
                         if a.tabs.len() > 1 && i == a.current {
                             out.push('*');
                         }
@@ -80,7 +85,11 @@ impl<E: Copy + PartialEq, S: Default> Screen<E, S> {
                     if shown {
                         current = tabs.len();
                     }
-                    tabs.push(Tab { editor: editor(name)?, state: S::default() });
+                    let (name, given) = match name.split_once('=') {
+                        Some((n, g)) => (n, Some(g.to_owned())),
+                        None => (name, None),
+                    };
+                    tabs.push(Tab { editor: editor(name)?, state: S::default(), name: given });
                 }
                 if tabs.is_empty() {
                     return None;
@@ -174,6 +183,13 @@ mod tests {
 
     #[test]
     fn tabs_survive_the_round_trip() {
+        let mut named: Screen<u8, ()> = Screen::new(0);
+        named.add_tab(0, 1);
+        named.rename_tab(0, 1, Some("Build".into()));
+        let text = named.describe(|e| format!("e{e}"));
+        assert_eq!(text, "[e0|e1=Build*]");
+        let back = Screen::<u8, ()>::from_description(&text, |n| n.strip_prefix('e')?.parse().ok()).unwrap();
+        assert_eq!(back.area(0).unwrap().tabs[1].name.as_deref(), Some("Build"));
         let mut s: Screen<K> = Screen::new(K::Gallery);
         s.add_tab(0, K::Prefs);
         s.add_tab(0, K::Empty);

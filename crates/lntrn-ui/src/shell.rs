@@ -72,6 +72,8 @@ pub struct Shell<H: Host> {
     /// An area whose header grip is being dragged, to drop on another
     /// area or a window edge (see [`crate::screen_dock`]).
     pub(crate) drag_area: Option<AreaId>,
+    /// A tab being renamed in its header: area, tab, the text, focus flag.
+    pub(crate) tab_rename: Option<(AreaId, usize, String, bool)>,
     pub(crate) toasts: Vec<crate::toasts::Toast>,
     pub(crate) stats: FrameStats,
 }
@@ -80,7 +82,7 @@ impl<H: Host> Shell<H> {
     /// One area hosting `editor`. Split [`Shell::screen`] for a richer
     /// starting layout.
     pub fn new(editor: H::Editor) -> Self {
-        Self { screen: Screen::new(editor), state: UiState::new(), prefs: Prefs::default(), opacity: 1.0, title: None, new_windows: Vec::new(), close_window: false, popup: None, drag_sep: None, drag_area: None, toasts: Vec::new(), stats: FrameStats::default() }
+        Self { screen: Screen::new(editor), state: UiState::new(), prefs: Prefs::default(), opacity: 1.0, title: None, new_windows: Vec::new(), close_window: false, popup: None, drag_sep: None, drag_area: None, tab_rename: None, toasts: Vec::new(), stats: FrameStats::default() }
     }
 
     /// The windows asked for since the last call, for the harness to open.
@@ -320,7 +322,8 @@ impl<H: Host> Shell<H> {
             };
             let kind = area.editor();
             let current_tab = area.current;
-            let tab_labels: Vec<String> = area.tabs.iter().map(|t| host.editor_label(t.editor).to_owned()).collect();
+            let tab_defaults: Vec<String> = area.tabs.iter().map(|t| host.editor_label(t.editor).to_owned()).collect();
+            let tab_labels: Vec<String> = area.tabs.iter().zip(&tab_defaults).map(|(t, d)| t.name.clone().unwrap_or_else(|| d.clone())).collect();
             let base = WidgetId::ROOT.with_u64(l.area as u64);
 
             let with_header = host.shows_header(kind);
@@ -345,9 +348,18 @@ impl<H: Host> Shell<H> {
                 let mut ui = Ui::new(draw, text, &theme, m, &mut self.state, content, l.header, base.with("header"), 0);
                 ui.set_window_rect(window);
                 let mut cx = AreaCx { area: l.area, state: area.state_mut(), active, pointer, prefs: &mut self.prefs, requests: &mut requests };
-                let header = HeaderIn { area: l.area, kind, editors: &editors, labels: &label_refs, tabs: &tab_labels, current: current_tab, maximized: maximized == Some(l.area), alone };
+                let rename = self.tab_rename.as_mut().filter(|r| r.0 == l.area).map(|r| {
+                    let (_, tab, text, focus) = r;
+                    (*tab, std::mem::take(text), *focus)
+                });
+                let mut rename_slot = rename;
+                let header = HeaderIn { area: l.area, kind, editors: &editors, labels: &label_refs, tabs: &tab_labels, defaults: &tab_defaults, current: current_tab, maximized: maximized == Some(l.area), alone, rename: rename_slot.as_mut() };
                 let out = area_header(&mut ui, host, &mut cx, header);
                 ui.finish();
+                if let (Some(slot), Some(r)) = (rename_slot, self.tab_rename.as_mut()) {
+                    r.2 = slot.1;
+                    r.3 = slot.2;
+                }
                 actions.extend(out.actions);
                 if out.grip_pressed {
                     grip_pressed = Some(l.area);
@@ -469,6 +481,19 @@ impl<H: Host> Shell<H> {
                 AreaAction::CloseTab(area) => {
                     self.screen.close_tab(area);
                 }
+                AreaAction::CloseTabAt(area, tab) => {
+                    self.screen.close_tab_at(area, tab);
+                }
+                AreaAction::MoveTab(area, from, to) => self.screen.move_tab(area, from, to),
+                AreaAction::StartRename(area, tab) => {
+                    let text = self.screen.area(area).and_then(|a| a.tabs.get(tab)).and_then(|t| t.name.clone()).unwrap_or_default();
+                    self.tab_rename = Some((area, tab, text, true));
+                }
+                AreaAction::RenameTab(area, tab, name) => {
+                    self.screen.rename_tab(area, tab, name);
+                    self.tab_rename = None;
+                }
+                AreaAction::RenameCancel => self.tab_rename = None,
                 AreaAction::SelectTab(area, tab) => self.screen.select_tab(area, tab),
                 AreaAction::Close(area) => {
                     self.screen.join(area);
