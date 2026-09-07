@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/lntrn-math",
     "crates/lntrn-image",
+    "crates/lntrn-svg",
     "crates/lntrn-core",
     "crates/lntrn-props",
     "crates/lntrn-text",
@@ -21,6 +22,7 @@ authors = ["Alva"]
 [workspace.dependencies]
 lntrn-math = { path = "crates/lntrn-math" }
 lntrn-image = { path = "crates/lntrn-image" }
+lntrn-svg = { path = "crates/lntrn-svg" }
 lntrn-core = { path = "crates/lntrn-core" }
 lntrn-props = { path = "crates/lntrn-props" }
 lntrn-text = { path = "crates/lntrn-text" }

@@ -828,6 +828,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "lntrn-svg"
+version = "0.2.0"
+dependencies = [
+ "lntrn-image",
+]
+
+[[package]]
 name = "lntrn-text"
 version = "0.2.0"
 dependencies = [
