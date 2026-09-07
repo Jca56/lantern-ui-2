@@ -63,7 +63,8 @@ pub(crate) struct Outcome {
 impl<H: AppHost> Win<H> {
     /// Open a window. The first one brings the GPU up (filling `shared`)
     /// and lets the host upload its pictures.
-    pub fn open(event_loop: &ActiveEventLoop, attrs: WindowAttributes, shared: &mut Option<GpuShared>, text: &TextEngine, host: &mut H, shell: Shell<H>, id: u32) -> Option<Self> {
+    #[allow(clippy::too_many_arguments)]
+    pub fn open(event_loop: &ActiveEventLoop, attrs: WindowAttributes, shared: &mut Option<GpuShared>, text: &TextEngine, host: &mut H, shell: Shell<H>, id: u32, transparent: bool) -> Option<Self> {
         let window = match event_loop.create_window(attrs) {
             Ok(w) => Arc::new(w),
             Err(e) => {
@@ -90,7 +91,7 @@ impl<H: AppHost> Win<H> {
             Some(s) => s,
             None => shared.gpu.instance.create_surface(Arc::clone(&window)).map_err(|e| log_error!("surface: {e}")).ok()?,
         };
-        let gfx = Gfx::new(shared, surface, size.width.max(1), size.height.max(1), text);
+        let gfx = Gfx::new(shared, surface, size.width.max(1), size.height.max(1), text, transparent);
         if first {
             host.init_gpu(&shared.gpu, gfx.surface.format(), &mut shared.images);
         }

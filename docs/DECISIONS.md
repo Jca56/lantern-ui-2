@@ -596,3 +596,22 @@ language, problems, servers); crammed right of the title it fought the
 window buttons and hid on narrow windows.
 **Rejected:** Always a bottom bar (small tools want the row back); a
 per-area status (the branch and the servers are not an area's).
+
+## U037 — A window may be translucent
+**Status:** Accepted (Alva, 2026-09-06)
+**Decision:** `AppConfig::opacity` (1.0 by default). Under 1 the window
+is created transparent, the surface takes a blended alpha mode, and the
+shell paints its big backgrounds — the clear, the title and status
+bars, area headers and bodies — with that alpha; `UiState::opacity`
+carries it to hosts that paint their own bodies (the code view, the
+terminal). Text, widgets, popups and dialogs stay solid. The Lantern
+compositor blurs whatever shows through. lntrn-code reads
+`[windows].background_opacity` from lantern.toml, and follows it live
+through its file watcher: `AppConfig::transparent` keeps the window
+transparent whatever the opacity, since the surface's alpha mode is fixed
+at creation.
+**Why:** The rest of the desktop is translucent and blurred; an opaque
+IDE window looked pasted on.
+**Rejected:** A preference in the shell (the desktop already has the
+setting); fading every fill (widgets need their contrast).
+

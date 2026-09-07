@@ -38,6 +38,14 @@ pub struct AppConfig {
     /// Proportional and monospace font families.
     pub sans: String,
     pub mono: String,
+    /// How opaque the window's surfaces are, 0–1. Under 1 the window is
+    /// made transparent and the shell paints its backgrounds with this
+    /// alpha (text and widgets stay solid), so the compositor shows and
+    /// blurs what is behind (U037).
+    pub opacity: f64,
+    /// Make the window transparent even at opacity 1, so `Shell::opacity`
+    /// can change while it runs (a desktop setting followed live).
+    pub transparent: bool,
     /// Keep preferences and the area layout in the app's config directory
     /// (`~/.config/<app_id>/`) between runs.
     pub persist: bool,
@@ -45,7 +53,7 @@ pub struct AppConfig {
 
 impl Default for AppConfig {
     fn default() -> Self {
-        Self { title: "Lantern".into(), app_id: "lantern-app".into(), size: (1600.0, 1000.0), maximized: true, decorations: false, sans: "Inter".into(), mono: "JetBrains Mono".into(), persist: true }
+        Self { title: "Lantern".into(), app_id: "lantern-app".into(), size: (1600.0, 1000.0), maximized: true, decorations: false, sans: "Inter".into(), mono: "JetBrains Mono".into(), opacity: 1.0, transparent: false, persist: true }
     }
 }
 
@@ -150,6 +158,7 @@ pub fn run<H: AppHost>(config: AppConfig, mut host: H, mut shell: Shell<H>) {
     event_loop.set_control_flow(ControlFlow::Wait);
     let pending = Arc::new(AtomicBool::new(false));
     host.waker(Waker { proxy: event_loop.create_proxy(), pending: Arc::clone(&pending) });
+    shell.opacity = config.opacity.clamp(0.05, 1.0);
     let mut app = App::new(config, host, shell, pending);
     if let Err(e) = event_loop.run_app(&mut app) {
         log_error!("event loop: {e}");
@@ -207,7 +216,7 @@ impl<H: AppHost> App<H> {
 
     fn attrs(&self, title: &str, size: (f64, f64), maximized: bool) -> WindowAttributes {
         let c = &self.config;
-        let attrs = Window::default_attributes().with_title(title).with_decorations(c.decorations).with_inner_size(LogicalSize::new(size.0, size.1)).with_maximized(maximized);
+        let attrs = Window::default_attributes().with_title(title).with_decorations(c.decorations).with_inner_size(LogicalSize::new(size.0, size.1)).with_maximized(maximized).with_transparent(c.transparent || c.opacity < 1.0);
         // The app id pairs the window with its desktop entry and icon under
         // Wayland; the X11 class does the same job there.
         #[cfg(target_os = "linux")]
@@ -219,7 +228,7 @@ impl<H: AppHost> App<H> {
     }
 
     fn open(&mut self, event_loop: &ActiveEventLoop, attrs: WindowAttributes, shell: Shell<H>) {
-        match Win::open(event_loop, attrs, &mut self.shared, &self.text, &mut self.host, shell, self.next_id) {
+        match Win::open(event_loop, attrs, &mut self.shared, &self.text, &mut self.host, shell, self.next_id, self.config.transparent || self.config.opacity < 1.0) {
             Some(w) => {
                 self.next_id += 1;
                 self.wins.push(w);

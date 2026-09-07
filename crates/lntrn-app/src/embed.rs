@@ -85,7 +85,7 @@ impl<H: AppHost> Embedded<H> {
         let gpu = Gpu::with_instance(instance, Some(&surface))?;
         let images = Images::new(&gpu);
         let mut shared = GpuShared { gpu, images };
-        let gfx = Gfx::new(&shared, surface, width.max(1), height.max(1), &text);
+        let gfx = Gfx::new(&shared, surface, width.max(1), height.max(1), &text, false);
         host.init_gpu(&shared.gpu, gfx.surface.format(), &mut shared.images);
         log_info!("embedded view: {width}x{height} @ {:.2}x", config.scale);
         let clipboard = Clipboard::new(Some(display), Some(window));

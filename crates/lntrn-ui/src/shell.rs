@@ -57,6 +57,8 @@ pub struct Shell<H: Host> {
     pub screen: Screen<H::Editor, H::AreaState>,
     pub state: UiState,
     pub prefs: Prefs,
+    /// The alpha the window's backgrounds paint with (U037).
+    pub opacity: f64,
     /// Shown in the title bar instead of the host's title: a window that
     /// is not the main one carries its own name.
     pub title: Option<String>,
@@ -78,7 +80,7 @@ impl<H: Host> Shell<H> {
     /// One area hosting `editor`. Split [`Shell::screen`] for a richer
     /// starting layout.
     pub fn new(editor: H::Editor) -> Self {
-        Self { screen: Screen::new(editor), state: UiState::new(), prefs: Prefs::default(), title: None, new_windows: Vec::new(), close_window: false, popup: None, drag_sep: None, drag_area: None, toasts: Vec::new(), stats: FrameStats::default() }
+        Self { screen: Screen::new(editor), state: UiState::new(), prefs: Prefs::default(), opacity: 1.0, title: None, new_windows: Vec::new(), close_window: false, popup: None, drag_sep: None, drag_area: None, toasts: Vec::new(), stats: FrameStats::default() }
     }
 
     /// The windows asked for since the last call, for the harness to open.
@@ -193,6 +195,8 @@ impl<H: Host> Shell<H> {
         let m = self.metrics(window_scale);
         let mut requests: Vec<ShellRequest> = Vec::new();
         self.state.reduce_motion = self.prefs.reduce_motion;
+        self.state.opacity = self.opacity;
+        let op = self.opacity;
 
         // A running tool owns button presses and keys; the UI still sees
         // motion (hover, cursor), releases (so a drag that started a tool
@@ -323,12 +327,12 @@ impl<H: Host> Shell<H> {
             draw.set_layer(0);
             draw.push_clip_absolute(l.rect);
             if with_header {
-                draw.rect_gradient(l.header, theme.header.top, theme.header.bottom);
+                draw.rect_gradient(l.header, theme.header.top.fade(op), theme.header.bottom.fade(op));
                 draw.hline(l.header.min.x, l.header.max.x, l.header.min.y, m.border, theme.highlight(theme.header.mid()));
                 draw.hline(l.header.min.x, l.header.max.x, l.header.max.y - m.border, m.border, theme.border_dark);
             }
             if !host.paints_body(kind) {
-                draw.rect_gradient(l.body, theme.panel.top, theme.panel.bottom);
+                draw.rect_gradient(l.body, theme.panel.top.fade(op), theme.panel.bottom.fade(op));
             }
             draw.stroke_rect(l.rect, m.border, 0.0, theme.border_dark);
             draw.pop_clip();
@@ -524,6 +528,9 @@ impl<H: Host> Shell<H> {
         } else {
             sep_cursor.unwrap_or(self.state.cursor_icon)
         };
-        ShellOutput { cursor, rebuild_again: self.state.request_rebuild, clear: theme.bg, window_command, quit, wake_after: self.state.wake_after, ime: self.state.ime_rect }
+        // Translucent: the clear must be fully transparent, or its alpha
+        // stacks under every surface painted over it (0.85 over 0.85 ≈ 0.98).
+        let clear = if op < 1.0 { theme.bg.fade(0.0) } else { theme.bg };
+        ShellOutput { cursor, rebuild_again: self.state.request_rebuild, clear, window_command, quit, wake_after: self.state.wake_after, ime: self.state.ime_rect }
     }
 }

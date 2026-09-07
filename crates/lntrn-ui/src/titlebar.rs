@@ -128,6 +128,7 @@ impl<H: Host> Shell<H> {
         // An unfocused window's bar sinks halfway into the background.
         let g = if ws.focused { theme.title } else { theme.title.map(|c| c.lerp(theme.bg, 0.5)) };
         let bg = g.mid();
+        let g = g.map(|c| c.fade(self.opacity));
         draw.set_layer(0);
         draw.push_clip_absolute(bar);
         draw.rect_gradient(bar, g.top, g.bottom);
@@ -240,7 +241,7 @@ impl<H: Host> Shell<H> {
     /// it, dim, left-aligned, in the title bar's colors and a smaller
     /// text (U036).
     pub(crate) fn status_bar(&mut self, draw: &mut DrawList, text: &mut TextEngine, theme: &Theme, m: Metrics, bar: Rect, status: &str) {
-        let g = theme.title;
+        let g = theme.title.map(|c| c.fade(self.opacity));
         draw.set_layer(0);
         draw.push_clip_absolute(bar);
         draw.rect_gradient(bar, g.top, g.bottom);

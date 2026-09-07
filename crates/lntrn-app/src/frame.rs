@@ -31,8 +31,8 @@ pub(crate) struct Gfx {
 }
 
 impl Gfx {
-    pub fn new(shared: &GpuShared, surface: wgpu::Surface<'static>, width: u32, height: u32, text: &TextEngine) -> Self {
-        let surface = SurfaceTarget::new(&shared.gpu, surface, width, height);
+    pub fn new(shared: &GpuShared, surface: wgpu::Surface<'static>, width: u32, height: u32, text: &TextEngine, transparent: bool) -> Self {
+        let surface = SurfaceTarget::new(&shared.gpu, surface, width, height, transparent);
         let pass2d = Pass2d::new(&shared.gpu, surface.format(), text.atlas(), &shared.images);
         Self { surface, pass2d, pool: TexturePool::new() }
     }

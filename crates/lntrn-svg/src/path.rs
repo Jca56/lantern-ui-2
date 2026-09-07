@@ -125,7 +125,7 @@ pub fn flatten(d: &str, t: &Affine) -> Vec<Vec<P>> {
                 cur.push(t.apply(pos));
             }
             b'C' | b'S' => {
-                let c1 = if cmd.to_ascii_uppercase() == b'C' {
+                let c1 = if cmd.eq_ignore_ascii_case(&b'C') {
                     let (Some(x), Some(y)) = (number(s, &mut i), number(s, &mut i)) else { break };
                     P::new(base.x + x, base.y + y)
                 } else {
@@ -140,7 +140,7 @@ pub fn flatten(d: &str, t: &Affine) -> Vec<Vec<P>> {
                 pos = end;
             }
             b'Q' | b'T' => {
-                let c = if cmd.to_ascii_uppercase() == b'Q' {
+                let c = if cmd.eq_ignore_ascii_case(&b'Q') {
                     let (Some(x), Some(y)) = (number(s, &mut i), number(s, &mut i)) else { break };
                     P::new(base.x + x, base.y + y)
                 } else {

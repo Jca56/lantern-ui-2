@@ -12,7 +12,9 @@ pub struct SurfaceTarget {
 impl SurfaceTarget {
     /// Configure `surface` for `gpu` at `width × height` physical pixels.
     /// Prefers an sRGB format so shaders work in linear light.
-    pub fn new(gpu: &Gpu, surface: wgpu::Surface<'static>, width: u32, height: u32) -> Self {
+    /// `transparent` asks for an alpha mode the compositor blends, so a
+    /// window can show what is behind it (and be blurred by Lantern).
+    pub fn new(gpu: &Gpu, surface: wgpu::Surface<'static>, width: u32, height: u32, transparent: bool) -> Self {
         let caps = surface.get_capabilities(&gpu.adapter);
         let format = caps
             .formats
@@ -24,10 +26,18 @@ impl SurfaceTarget {
             .get_default_config(&gpu.adapter, width.max(1), height.max(1))
             .expect("surface is not compatible with the adapter");
         config.format = format;
+        if transparent {
+            let want = [wgpu::CompositeAlphaMode::PreMultiplied, wgpu::CompositeAlphaMode::PostMultiplied, wgpu::CompositeAlphaMode::Inherit];
+            if let Some(mode) = want.iter().find(|m| caps.alpha_modes.contains(m)) {
+                config.alpha_mode = *mode;
+            } else {
+                log_info!("surface: no transparent alpha mode among {:?}", caps.alpha_modes);
+            }
+        }
         config.present_mode = wgpu::PresentMode::AutoVsync;
         config.desired_maximum_frame_latency = 2;
         surface.configure(&gpu.device, &config);
-        log_info!("surface: {format:?} {}x{} {:?}", config.width, config.height, config.present_mode);
+        log_info!("surface: {format:?} {}x{} {:?} {:?}", config.width, config.height, config.present_mode, config.alpha_mode);
         Self { surface, config }
     }
 

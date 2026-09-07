@@ -70,7 +70,7 @@ fn color_of(s: &str, gradients: &[(String, [u8; 4])]) -> Option<[u8; 4]> {
 }
 
 /// An attribute, or the same property from the `style` attribute.
-fn prop<'a>(el: &'a Element, name: &str) -> Option<String> {
+fn prop(el: &Element, name: &str) -> Option<String> {
     if let Some(style) = el.attr("style") {
         for decl in style.split(';') {
             if let Some((k, v)) = decl.split_once(':')

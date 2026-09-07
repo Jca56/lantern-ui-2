@@ -151,6 +151,9 @@ pub struct UiState {
     /// The `reduce_motion` preference: [`crate::Ui::animate`] snaps, toasts
     /// vanish instead of fading, busy bars hold still.
     pub reduce_motion: bool,
+    /// How opaque the window's big backgrounds paint (U037): a host that
+    /// paints its own body uses it the same way.
+    pub opacity: f64,
     /// Keyboard-focusable widgets of this frame in declaration order; Tab
     /// walks it (see [`crate::Ui::focusable`]).
     pub focus_order: Vec<WidgetId>,
@@ -223,6 +226,7 @@ impl UiState {
             ime_preedit: None,
             ime_rect: None,
             reduce_motion: false,
+            opacity: 1.0,
             focus_order: Vec::new(),
             focus_visible: false,
             focus_rect: None,
